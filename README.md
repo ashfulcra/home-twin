@@ -22,6 +22,8 @@ For production use Fulcra's official [build-and-deploy-a-web-app skill](https://
 
 ## Connect a home agent
 
+Open **Household → Download private agent brief** for known facts and targeted capture questions. Read [agent handoff](docs/agent-handoff.md) for a repeatable setup-to-agent flow.
+
 Use [maintaining-home-twins](skills/maintaining-home-twins/SKILL.md) with a long-running agent connected to the intended Fulcra account. From the UI, save an agent request and give that agent the home ID. The agent reads the request, maintains a private workstream, preserves original captures, reconciles contributions and records blockers. It should ask for a targeted photo, scan, plan or measurement when that resolves a specific uncertainty; missing geometry does not block equipment or maintenance work.
 
 Keep the full repository alongside the installed skill: copy `skills/maintaining-home-twins/` into your agent’s skills directory, and run its helper from this repository. The skill references this matching runtime; installing the guide alone does not install the application.
@@ -30,6 +32,7 @@ Data contracts and concrete Fulcra commands are linked from the skill. The local
 
 ```sh
 node scripts/home-agent.mjs validate examples/home.json
+node scripts/home-agent.mjs brief examples/home.json new-private-brief.json
 node scripts/home-agent.mjs reconcile accepted.json incoming/ new-report.json
 node scripts/home-agent.mjs sync HOME_ID new-authenticated-report.json
 ```

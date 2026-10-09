@@ -1,5 +1,6 @@
 import {readFileSync,writeFileSync,readdirSync} from 'node:fs';
 import {resolve,join} from 'node:path';
+import {buildAgentBrief} from '../src/lib/home/agent-brief.js';
 import {syncHome} from './fulcra-ingest.mjs';
 import {reconcileContributions} from '../src/lib/home/contributions.js';
 const [action,input,folder,output]=process.argv.slice(2);
@@ -10,8 +11,13 @@ function validate(home){
  return home;
 }
 try {
- if(!input||!['validate','reconcile','sync'].includes(action))throw new Error('Usage: node scripts/home-agent.mjs validate HOME.json | reconcile HOME.json CONTRIBUTIONS_DIR NEW_REPORT.json | sync HOME_ID NEW_REPORT.json');
- if(action==='sync'){
+ if(!input||!['validate','reconcile','sync','brief'].includes(action))throw new Error('Usage: node scripts/home-agent.mjs validate HOME.json | reconcile HOME.json CONTRIBUTIONS_DIR NEW_REPORT.json | sync HOME_ID NEW_REPORT.json | brief HOME.json NEW_BRIEF.json');
+ if(action==='brief'){
+  if(!folder)throw new Error('New brief output path required');
+  const raw=JSON.parse(readFileSync(resolve(input),'utf8'));const home=validate(raw.home??raw);
+  const brief=buildAgentBrief(home);writeFileSync(resolve(folder),JSON.stringify(brief,null,2),{flag:'wx',mode:0o600});
+  console.log(JSON.stringify({homeId:home.id,questions:brief.questions.length,authority:'unverified-offline',remoteWrites:false}));
+ }else if(action==='sync'){
   if(!folder)throw new Error('New report output path required');
   const ingested=await syncHome(input);validate(ingested.home);
   const result={...reconcileContributions(ingested.home,ingested.rows),receipts:ingested.receipts,unavailableMembers:ingested.unavailableMembers,ingestedAt:ingested.ingestedAt,baselineVersion:ingested.baselineVersion};
