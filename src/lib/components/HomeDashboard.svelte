@@ -9,7 +9,7 @@
  let errorMessage = $state('');
  let agentStatus=$state('');
  async function requestAgent(){try{const response=await fetch('/api/home/agent-request',{method:'POST'});if(!response.ok)throw new Error('Request could not be saved');agentStatus='Request saved in your Fulcra account. Connect your agent to Fulcra and give it home ID '+home.id+'. Saving this request does not launch an agent.';}catch(e){agentStatus=e instanceof Error?e.message:String(e);}}
- async function ownHome(){const response=await fetch('/api/home/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'own'})});if(response.ok)await load();}
+ async function ownHome(){try{const response=await fetch('/api/home/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'own'})});const result=await response.json();if(!response.ok)throw new Error('Home connection could not be confirmed');if(result.status==='pending-readback')agentStatus='Connection confirmation is pending. Retry Own home to confirm.';else await load();}catch(e){agentStatus=e instanceof Error?e.message:String(e);}}
  let role=$state('maintainer');
  let review: any[] = $state([]);
  let kind=$state('note');let entityId=$state('');let field=$state('serial');let value=$state('');let text=$state('');let contactId=$state('');let performedAt=$state('');let saveMessage=$state('');let saving=$state(false);let pending: any=$state(null);
