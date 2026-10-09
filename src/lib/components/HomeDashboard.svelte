@@ -1,0 +1,52 @@
+<script lang="ts">
+ import { onMount } from 'svelte';
+ let home: any = $state(null);
+ let loadState = $state('loading');
+ let errorMessage = $state('');
+ let query = $state('');
+ let section = $state('Overview');
+ const sections = ['Overview','Equipment','Maintenance','History','Sources'];
+ let equipment = $derived((home?.equipment ?? []).filter((item: any) => `${item.name} ${item.system} ${item.model} ${item.room?.name ?? ''}`.toLowerCase().includes(query.toLowerCase())));
+ async function load() {
+  loadState='loading';errorMessage='';
+  try {
+   const response=await fetch('/api/home');
+   if(!response.ok)throw new Error(response.status===401?'Please sign in again.':'Your home data is temporarily unavailable.');
+   const data=await response.json();home=data.home;loadState=data.status;
+  }catch(e){loadState='error';errorMessage=e instanceof Error?e.message:String(e);}
+ }
+ onMount(load);
+</script>
+
+<main class="home-dashboard">
+ {#if loadState==='loading'}
+  <p>Loading your home…</p>
+ {:else if loadState==='error'}
+  <h1>We couldn’t load your home</h1><p>{errorMessage} Your saved records are unchanged.</p><button onclick={load}>Try again</button>
+ {:else if loadState==='empty'}
+  <h1>Start with what you know</h1><p>Your home doesn’t need a perfect floor plan. Equipment, contacts and maintenance records can come first.</p><p>Guided home setup is being built. An agent can connect a home record through your Fulcra account.</p>
+ {:else if home}
+  <header>
+   <div><p class="eyebrow">Your home, remembered</p><h1>{home.name}</h1><p>Equipment, care and the knowledge that keeps your home running.</p></div>
+   {#if home.model?.url}<a class="model-link" href={home.model.url} target="_blank" rel="noreferrer">{home.model.label} ↗</a>{/if}
+  </header>
+  <nav aria-label="Home sections">{#each sections as name}<button class:active={section===name} onclick={()=>section=name}>{name}</button>{/each}</nav>
+  {#if section==='Overview'}
+   <div class="stats"><article><span>{home.equipment.length}</span><p>Equipment records</p></article><article><span>{home.schedules.filter((s:any)=>s.kind==='maintenance'&&s.state==='past-due').length}</span><p>Known maintenance past due</p></article><article><span>{home.history.filter((h:any)=>h.kind==='maintenance'&&h.status==='completed').length}</span><p>Recorded service visits</p></article></div>
+   <section><h2>What needs a little attention</h2><p class="muted">Missing information stays visible. It won’t stop you using your home.</p><ul>{#each home.knowledgeGaps??[] as gap}<li>{gap}</li>{/each}</ul></section>
+   <section><h2>At a glance</h2><div class="cards">{#each home.equipment as item}<article><p class="eyebrow">{item.system}</p><h3>{item.name}</h3><p>{item.manufacturer} {item.model}</p><p class="muted">Last service: {item.lastService?.performedAt??'Not recorded'}</p><p class="muted">Who to call: {item.provider?.name??'Not recorded'}</p><button onclick={()=>{section='Equipment';query=item.name;}}>View equipment</button></article>{/each}</div></section>
+  {:else if section==='Equipment'}
+   <section><h2>Equipment</h2><label>Find equipment <input type="search" bind:value={query} placeholder="Name, system, model or room" /></label><div class="cards">{#each equipment as item}<article><p class="eyebrow">{item.system}</p><h3>{item.name}</h3><p>{item.manufacturer} · {item.model} · {item.capacity??''}</p><p>Location: {item.room?.name??'Not placed yet'}</p>{#if item.room?.viewerUrl}<a href={item.room.viewerUrl} target="_blank" rel="noreferrer">Open viewer — select {item.room.name} ↗</a>{/if}<dl>{#each item.facts??[] as fact}<dt>{fact.name}</dt><dd>{fact.value}</dd>{/each}<dt>Last maintenance</dt><dd>{item.lastService?.performedAt??'Not recorded'}</dd><dt>Service provider</dt><dd>{item.provider?.name??'Not recorded'}</dd></dl><p class="muted">Evidence</p>{#each item.sources as source}<a class="source-link" href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">{source.title} · {source.freshness}</a>{/each}</article>{/each}</div>{#if equipment.length===0}<p>No equipment matches that search.</p>{/if}</section>
+  {:else if section==='Maintenance'}
+   <section><h2>Maintenance and schedules</h2><p class="muted">A schedule describes what should happen. Service history records what actually happened.</p>{#if home.schedules.length===0}<p>No maintenance schedules recorded yet.</p>{/if}{#each home.schedules as schedule}<article><p class="eyebrow">{schedule.kind} · {schedule.state}</p><h3>{schedule.name}</h3><p>{schedule.description??''}</p><p>Next due: {schedule.dueAt??'Not recorded'}</p>{#each schedule.sources as source}<a href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">Read schedule source</a>{/each}</article>{/each}</section>
+  {:else if section==='History'}
+   <section><h2>Service history</h2>{#if home.history.length===0}<p>No completed maintenance recorded in the imported evidence. This means the date is unknown, not that maintenance never happened.</p>{/if}{#each home.history as event}<article><h3>{event.title??event.kind}</h3><p>{event.performedAt} · {event.status}</p><p>{event.summary??''}</p></article>{/each}</section>
+  {:else if section==='Sources'}
+   <section><h2>Your home knowledge</h2><p class="muted">“Recent” means the source reports verification within 30 days. Importing an old document doesn’t verify its contents.</p>{#each home.sources as source}<article><h3>{source.title}</h3><p>{source.path}</p><p>Verified: {source.verifiedAt??'Not recorded'} · {source.freshness}</p><a href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">Read original source ↗</a></article>{/each}</section>
+  {/if}
+ {/if}
+</main>
+
+<style>
+ .home-dashboard{max-width:1120px;margin:0 auto;padding:36px 24px 80px;color:#202c2c;font-family:system-ui,sans-serif;background:#f7faf8;min-height:100vh;width:100%;box-sizing:border-box}header{display:flex;justify-content:space-between;align-items:center;gap:24px;margin-bottom:28px}h1{font-size:40px;letter-spacing:-1.4px;margin:8px 0}h2{font-size:25px;margin:0 0 12px}h3{font-size:20px;margin:8px 0}p{line-height:1.6}.eyebrow{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#387367;font-weight:650}.muted{color:#62716d;font-size:14px}nav{display:flex;gap:6px;border-bottom:1px solid #d5e0d9;padding-bottom:12px;flex-wrap:wrap}button,.model-link{padding:10px 16px;border:1px solid #cadbd1;border-radius:8px;background:white;cursor:pointer;color:#254a3c;font-size:14px}nav button{border:0;background:transparent}nav button.active{background:#dceee4}.stats,.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:18px;margin:24px 0}article{background:white;border:1px solid #dbe4df;padding:22px;border-radius:12px;margin:12px 0}.stats article{margin:0}.stats span{font-size:34px;font-weight:650}section{margin-top:32px}a{color:#216c58;text-decoration:underline;text-underline-offset:3px}.model-link{text-decoration:none;white-space:nowrap}.source-link{display:block;margin-top:8px;font-size:13px}li{line-height:1.7;margin-bottom:8px}label{display:block;font-size:14px}input{display:block;width:100%;max-width:480px;padding:12px;border:1px solid #becfc5;border-radius:8px;margin-top:8px;background:white;color:#202c2c}dt{font-size:13px;color:#63736c;margin-top:14px}dd{margin:3px 0;font-size:14px}@media(max-width:600px){header{display:block}.model-link{display:inline-block}.home-dashboard{padding:24px 16px}h1{font-size:32px}}
+</style>
