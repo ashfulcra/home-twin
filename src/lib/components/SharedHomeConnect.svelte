@@ -1,0 +1,7 @@
+<script lang="ts">
+ let {onconnected}: {onconnected:()=>void}=$props();
+ let ownerUserId=$state('');let homeId=$state('');let message=$state('');let saving=$state(false);
+ async function connect(){saving=true;message='';try{const response=await fetch('/api/home/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ownerUserId,homeId})});const result=await response.json();if(!response.ok)throw new Error(result.message??'Home access could not be verified.');message='Connected';onconnected();}catch(e){message=e instanceof Error?e.message:String(e);}finally{saving=false;}}
+</script>
+<section><h2>Join your household’s home</h2><p>Ask the home maintainer for the home ID and their Fulcra user ID. They must share the home folder and add your account as a member first. Connecting here grants no new access.</p><form onsubmit={(event)=>{event.preventDefault();connect();}}><label>Maintainer’s Fulcra user ID <input bind:value={ownerUserId} required /></label><label>Home ID <input bind:value={homeId} required placeholder="example-home" /></label><button disabled={saving}>{saving?'Checking access…':'Connect shared home'}</button></form><p role="status">{message}</p></section>
+<style>section{padding:24px 0}label{display:block;margin:16px 0}input{display:block;padding:10px;border:1px solid #becfc5;border-radius:8px;width:90%;max-width:480px;margin-top:8px}button{padding:10px 16px;border:1px solid #cadbd1;border-radius:8px;background:white;color:#254a3c}p{line-height:1.6}</style>

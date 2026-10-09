@@ -1,5 +1,5 @@
 import {env as publicEnv} from '$env/dynamic/public';
-import {env} from '$env/dynamic/private';
+import {resolveHome} from '$lib/server/home-access.js';
 import {createHash} from 'node:crypto';
 import {error,json} from '@sveltejs/kit';
 import {FulcraAPI} from '$lib/api-client.js';
@@ -10,12 +10,11 @@ export async function POST({cookies,request}) {
  if(Number(request.headers.get('content-length')??0)>16000)throw error(413,'Contribution is too long');
  let input;
  try {const raw=await request.text();if(raw.length>16000)throw new Error('Contribution is too long');input=validateContribution(JSON.parse(raw));}catch(e){throw error(400,e instanceof Error?e.message:'Invalid contribution');}
- const endpoint=publicEnv.PUBLIC_FULCRA_API_ENDPOINT;const root=env.HOME_ROOT||'/home/twin';
+ const endpoint=publicEnv.PUBLIC_FULCRA_API_ENDPOINT;
  try {
-  const api=new FulcraAPI(endpoint,token);const principal=await api.get('user/v1alpha1/info');
-  if(!principal.userid)throw error(401,'Session expired');
-  const baseline=await readFulcraFile(endpoint,token,`${root}/home.json`);
-  if(!baseline||JSON.parse(baseline.text).id!==input.homeId)throw error(404,'Home not found in your account');
+  const access=await resolveHome(token);const principal={userid:access.userId};const root=access.root;
+  if(access.role==='viewer')throw error(403,'This home is read-only for you');
+  if(!access.home||access.home.id!==input.homeId)throw error(404,'Home not found');
   const digest=createHash('sha256').update(JSON.stringify(input)).digest('hex');
   const path=`${root}/contributions/${input.id}-${digest}.json`;
   const previous=await listFulcraJSON(endpoint,token,`${root}/contributions`);

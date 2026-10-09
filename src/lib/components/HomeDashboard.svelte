@@ -1,8 +1,10 @@
 <script lang="ts">
+ import SharedHomeConnect from './SharedHomeConnect.svelte';
  import { onMount } from 'svelte';
  let home: any = $state(null);
  let loadState = $state('loading');
  let errorMessage = $state('');
+ let role=$state('maintainer');
  let review: any[] = $state([]);
  let kind=$state('note');let entityId=$state('');let field=$state('serial');let value=$state('');let text=$state('');let performedAt=$state('');let saveMessage=$state('');let saving=$state(false);let pending: any=$state(null);
  async function contribute(){
@@ -12,14 +14,14 @@
  }
  let query = $state('');
  let section = $state('Overview');
- const sections = ['Overview','Equipment','Maintenance','History','Contributions','Sources'];
+ const sections = ['Overview','Equipment','Maintenance','History','Contributions','Sources','Household'];
  let equipment = $derived((home?.equipment ?? []).filter((item: any) => `${item.name} ${item.system} ${item.model} ${item.room?.name ?? ''}`.toLowerCase().includes(query.toLowerCase())));
  async function load() {
   loadState='loading';errorMessage='';
   try {
    const response=await fetch('/api/home');
    if(!response.ok)throw new Error(response.status===401?'Please sign in again.':'Your home data is temporarily unavailable.');
-   const data=await response.json();home=data.home;review=data.review??[];loadState=data.status;
+   const data=await response.json();home=data.home;role=data.role??'maintainer';review=data.review??[];loadState=data.status;
   }catch(e){loadState='error';errorMessage=e instanceof Error?e.message:String(e);}
  }
  onMount(load);
@@ -31,7 +33,7 @@
  {:else if loadState==='error'}
   <h1>We couldn’t load your home</h1><p>{errorMessage} Your saved records are unchanged.</p><button onclick={load}>Try again</button>
  {:else if loadState==='empty'}
-  <h1>Start with what you know</h1><p>Your home doesn’t need a perfect floor plan. Equipment, contacts and maintenance records can come first.</p><p>Guided home setup is being built. An agent can connect a home record through your Fulcra account.</p>
+  <h1>Start with what you know</h1><p>Your home doesn’t need a perfect floor plan. Equipment, contacts and maintenance records can come first.</p><p>Guided home setup is being built. An agent can connect a home record through your Fulcra account.</p><SharedHomeConnect onconnected={load} />
  {:else if home}
   <header>
    <div><p class="eyebrow">Your home, remembered</p><h1>{home.name}</h1><p>Equipment, care and the knowledge that keeps your home running.</p></div>
@@ -50,15 +52,17 @@
    <section><h2>Service history</h2>{#if home.history.length===0}<p>No completed maintenance recorded in the imported evidence. This means the date is unknown, not that maintenance never happened.</p>{/if}{#each home.history as event}<article><h3>{event.title??event.kind}</h3><p>{event.performedAt} · {event.status}</p><p>{event.summary??''}</p></article>{/each}</section>
   {:else if section==='Contributions'}
    <section><h2>Add what you know</h2><p>Notes and routine facts help immediately. Contradictions and floor-plan changes wait for the home maintainer’s review.</p>
-    <form onsubmit={(event)=>{event.preventDefault();contribute();}}>
+    {#if role==='viewer'}<p>Your household has given you view access. Ask the maintainer for contributor access to add information.</p>{:else}<form onsubmit={(event)=>{event.preventDefault();contribute();}}>
      <fieldset disabled={saving||!!pending}><label>Type <select bind:value={kind}><option value="note">Note</option><option value="fact">Equipment fact</option><option value="maintenance">Completed maintenance</option><option value="geometry">Layout correction</option></select></label>
      <label>Equipment <select bind:value={entityId}><option value="">Whole home</option>{#each home.equipment as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
      {#if kind==='fact'}<label>Fact <select bind:value={field}>{#each ['model','manufacturer','serial','capacity','installedAt'] as name}<option value={name}>{name}</option>{/each}</select></label><label>Value <input bind:value required maxlength="500" /></label>{:else}<label>Description <textarea bind:value={text} required maxlength="10000"></textarea></label>{/if}
      {#if kind==='maintenance'}<label>Actual service date <input type="date" bind:value={performedAt} required /></label>{/if}</fieldset>
      <button disabled={saving} type="submit">{saving?'Saving…':pending?'Retry same contribution':'Save contribution'}</button>
-    </form><p role="status">{saveMessage}</p>
+    </form>{/if}<p role="status">{saveMessage}</p>
    </section><section><h2>Household notes</h2>{#if !(home.notes??[]).length}<p>No notes yet.</p>{/if}{#each home.notes??[] as note}<article><p>{note.text}</p><p class="muted">Recorded {note.recordedAt} · author {note.authorUserId}</p></article>{/each}</section>
    <section><h2>Needs review ({review.length})</h2>{#if !review.length}<p>No contributions waiting for review.</p>{/if}{#each review as item}<article><p class="eyebrow">{item.reason}</p><p>{item.contribution.text??`${item.contribution.field}: ${item.contribution.value}`}</p><p class="muted">Contribution {item.contribution.id}</p></article>{/each}<p class="muted">The maintainer reviews these against their sources before updating the accepted home record.</p></section>
+  {:else if section==='Household'}
+   <section><h2>Your household</h2><p>Your role: {role}</p><p>The home maintainer reviews conflicting facts and layout changes. Each contributor keeps their own originals in Fulcra and shares only this home’s contributions.</p><p>Changing a share in Fulcra changes future access. Previously viewed or downloaded information cannot be recalled.</p><SharedHomeConnect onconnected={load} /></section>
   {:else if section==='Sources'}
    <section><h2>Your home knowledge</h2><p class="muted">“Recent” means the source reports verification within 30 days. Importing an old document doesn’t verify its contents.</p>{#each home.sources as source}<article><h3>{source.title}</h3><p>{source.path}</p><p>Verified: {source.verifiedAt??'Not recorded'} · {source.freshness}</p><a href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">Read original source ↗</a></article>{/each}</section>
   {/if}
