@@ -1,4 +1,5 @@
 <script lang="ts">
+ import HomeLayout from './HomeLayout.svelte';
  import HomeCare from './HomeCare.svelte';
  import SharedHomeConnect from './SharedHomeConnect.svelte';
  import { onMount } from 'svelte';
@@ -18,7 +19,7 @@
  }
  let query = $state('');
  let section = $state('Overview');
- const sections = ['Overview','Equipment','Maintenance','History','Care','Contributions','Sources','Household'];
+ const sections = ['Overview','Equipment','Maintenance','History','Care','Layout','Contributions','Sources','Household'];
  let equipment = $derived((home?.equipment ?? []).filter((item: any) => `${item.name} ${item.system} ${item.model} ${item.room?.name ?? ''}`.toLowerCase().includes(query.toLowerCase())));
  async function load() {
   loadState='loading';errorMessage='';agentStatus='';
@@ -54,6 +55,8 @@
    <section><h2>Maintenance and schedules</h2><p class="muted">A schedule describes what should happen. Service history records what actually happened.</p>{#if home.schedules.length===0}<p>No maintenance schedules recorded yet.</p>{/if}{#each home.schedules as schedule}<article><p class="eyebrow">{schedule.kind} · {schedule.state}</p><h3>{schedule.name}</h3><p>{schedule.description??''}</p><p>Next due: {schedule.dueAt??'Not recorded'}</p>{#each schedule.sources as source}<a href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">Read schedule source</a>{/each}</article>{/each}</section>
   {:else if section==='History'}
    <section><h2>Service history</h2>{#if home.history.length===0}<p>No completed maintenance recorded in the imported evidence. This means the date is unknown, not that maintenance never happened.</p>{/if}{#each home.history as event}<article><h3>{event.title??event.kind}</h3><p>{event.performedAt} · {event.status}</p><p>{event.summary??''}</p></article>{/each}</section>
+  {:else if section==='Layout'}
+   <HomeLayout {home} {role} />
   {:else if section==='Care'}
    <HomeCare {home} {role} onchanged={load} onEquipment={(id)=>{section='Equipment';query=home.equipment.find((e:any)=>e.id===id)?.name??'';}} />
   {:else if section==='Contributions'}

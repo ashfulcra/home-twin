@@ -46,6 +46,8 @@ Read [shared homes](docs/shared-homes.md) and [contributions](docs/contributions
 
 Collaboration is a pilot until a genuine two-account shared read/contribute/reconcile/revoke workflow has passed. Contract tests do not replace that live check. Revocation blocks future reads; it cannot recall previously downloaded information. Manual review-decision files are preserved, but the current UI does not automatically apply those decisions.
 
+The [rough layout editor](docs/layout-drafts.md) offers synthetic examples and an adjacency interview, with direct segment selection and freeform lengths. Estimated drafts stay correctable and require review before replacing an accepted model.
+
 ## Architecture
 
 Fulcra originals and immutable contributions → designated maintainer's accepted home record → regenerated dashboard projection. Every source keeps its origin and verification date. Import timestamps, service dates, device observations and sync times have different meanings.
