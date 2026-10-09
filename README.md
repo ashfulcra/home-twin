@@ -38,6 +38,8 @@ node scripts/home-agent.mjs sync HOME_ID new-authenticated-report.json
 
 The report separates accepted routine changes from review items and refuses to overwrite an existing output. One designated maintainer reviews and publishes accepted snapshots, with version readback and handoff responsibility.
 
+Care includes provider lookup, actual service dates and optional assigned chores. See [home care](docs/home-care.md) for date, completion and reminder behavior.
+
 ## Household collaboration
 
 Read [shared homes](docs/shared-homes.md) and [contributions](docs/contributions.md). Each contributor uses their own Fulcra account. Only home-specific folders are shared; both an explicit Fulcra share and a member role are required. Contributors cannot rewrite the maintainer's snapshot. Source account attribution is checked, and contradictions or major geometry changes remain in review.

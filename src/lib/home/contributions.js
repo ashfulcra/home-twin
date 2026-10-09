@@ -4,7 +4,7 @@
  */
 export function reconcileContributions(baseline, contributions) {
  const home=structuredClone(baseline);
- home.notes??=[];home.history??=[];home.contributionEvidence??=[];
+ home.notes??=[];home.history??=[];home.contributionEvidence??=[];home.contacts??=[];home.schedules??=[];
  /** @type {string[]} */ const accepted=[];
  /** @type {any[]} */ const review=[];
  const unique=new Map();const collisions=new Set();
@@ -14,7 +14,7 @@ export function reconcileContributions(baseline, contributions) {
   if(unique.has(c.id)&&JSON.stringify(unique.get(c.id))!==JSON.stringify(c))collisions.add(c.id);
   else unique.set(c.id,c);
  }
- const rows=[...unique.values()];
+ const rows=[...unique.values()].sort((a,b)=>Number(a.kind==='task-completion')-Number(b.kind==='task-completion'));
  /** @param {any} c @param {string} reason */
  const hold=(c,reason)=>review.push({contribution:c,reason});
  const fields=new Set(['model','manufacturer','serial','capacity','installedAt']);
@@ -23,6 +23,7 @@ export function reconcileContributions(baseline, contributions) {
   if(!c.authorUserId||!c.id){hold(c,'missing-provenance');continue;}
   const entity=home.equipment?.find((/** @type {any} */ item)=>item.id===c.entityId);
   if(c.entityId&&!entity){hold(c,'unknown-entity');continue;}
+  if(c.contactId&&!home.contacts.some((/** @type {any} */ contact)=>contact.id===c.contactId)){hold(c,'unknown-contact');continue;}
   if(c.kind==='fact'&&c.baseRevision!==undefined&&c.baseRevision!==home.revision){hold(c,'stale-base-revision');continue;}
   if(c.kind==='geometry'){hold(c,'major-model-change');continue;}
   if(c.kind==='note'){
@@ -34,6 +35,16 @@ export function reconcileContributions(baseline, contributions) {
    const conflict=new Set(competing.map(other=>other.value)).size>1;
    if(conflict || (entity[c.field]!=null&&entity[c.field]!==c.value)){hold(c,'contradiction');continue;}
    entity[c.field]=c.value;
+  }else if(c.kind==='contact'){
+   if(!c.value||!c.field){hold(c,'invalid-contact');continue;}
+   if(!home.contacts.some((/** @type {any} */ contact)=>contact.id===c.id))home.contacts.push({id:c.id,name:c.value,trade:c.field,phone:c.phone??null,email:c.email??null,summary:c.text??'',contributionId:c.id,authorUserId:c.authorUserId,recordedAt:c.recordedAt});
+  }else if(c.kind==='schedule'){
+   if(!c.value||!['maintenance','chore'].includes(c.field)||!Number.isFinite(Date.parse(c.dueAt))){hold(c,'invalid-schedule');continue;}
+   if(!home.schedules.some((/** @type {any} */ task)=>task.id===c.id))home.schedules.push({id:c.id,name:c.value,kind:c.field,dueAt:c.dueAt,assignee:c.assignee??null,equipmentId:c.entityId??null,description:c.text??'',contributionId:c.id,authorUserId:c.authorUserId,recordedAt:c.recordedAt});
+  }else if(c.kind==='task-completion'){
+   const schedule=home.schedules.find((/** @type {any} */ task)=>task.id===c.scheduleId);
+   if(!schedule||!Number.isFinite(Date.parse(c.performedAt))||Date.parse(c.performedAt)>Date.now()||!Number.isFinite(Date.parse(c.recordedAt))||Date.parse(c.recordedAt)>Date.now()||Date.parse(c.performedAt)>Date.parse(c.recordedAt)){hold(c,'invalid-task-completion');continue;}
+   if(!home.history.some((/** @type {any} */ h)=>h.id===c.id))home.history.push({...c,kind:schedule.kind,equipmentId:schedule.equipmentId??null,status:'completed',title:schedule.name,summary:c.text});
   }else if(c.kind==='maintenance'){
    const performed=Date.parse(c.performedAt);const recorded=Date.parse(c.recordedAt);
    if(!Number.isFinite(performed)||!Number.isFinite(recorded)||performed>recorded||recorded>Date.now()||performed>Date.now()){hold(c,'missing-service-date');continue;}
@@ -50,14 +61,17 @@ export function reconcileContributions(baseline, contributions) {
 export function validateContribution(input) {
  if(!input||typeof input!=='object'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.id))throw new Error('A stable contribution ID is required');
  if(typeof input.homeId!=='string'||!input.homeId||input.homeId.length>100)throw new Error('Choose a home');
- if(!['note','fact','maintenance','geometry'].includes(input.kind))throw new Error('Unsupported contribution type');
+ if(!['note','fact','maintenance','geometry','contact','schedule','task-completion'].includes(input.kind))throw new Error('Unsupported contribution type');
  /** @type {any} */ const result={id:input.id,homeId:input.homeId,kind:input.kind};
  if(input.baseRevision!==undefined){if(!Number.isSafeInteger(input.baseRevision)||input.baseRevision<0)throw new Error('Invalid base revision');result.baseRevision=input.baseRevision;}
- for(const field of ['entityId','field','value','text','performedAt']){
+ for(const field of ['entityId','field','value','text','performedAt','phone','email','dueAt','assignee','scheduleId','contactId']){
   if(input[field]!==undefined){if(typeof input[field]!=='string'||input[field].length>(field==='text'?10000:500))throw new Error('Contribution is too long or invalid');result[field]=input[field].trim();}
  }
- if(['note','geometry','maintenance'].includes(input.kind)&&!result.text)throw new Error('Add a description');
+ if(['note','geometry','maintenance','task-completion'].includes(input.kind)&&!result.text)throw new Error('Add a description');
  if(input.kind==='fact'&&(!result.entityId||!['model','manufacturer','serial','capacity','installedAt'].includes(result.field)||!result.value))throw new Error('Choose equipment and a supported fact');
- if(input.kind==='maintenance'&&(!Number.isFinite(Date.parse(result.performedAt))||Date.parse(result.performedAt)>Date.now()))throw new Error('Enter the actual past service date');
+ if(['maintenance','task-completion'].includes(input.kind)&&(!Number.isFinite(Date.parse(result.performedAt))||Date.parse(result.performedAt)>Date.now()))throw new Error('Enter the actual past service date');
+ if(input.kind==='contact'&&(!result.value||!result.field))throw new Error('Add provider name and trade');
+ if(input.kind==='schedule'&&(!result.value||!['maintenance','chore'].includes(result.field)||!Number.isFinite(Date.parse(result.dueAt))))throw new Error('Choose chore or maintenance and an explicit due date');
+ if(input.kind==='task-completion'&&!result.scheduleId)throw new Error('Choose the scheduled task');
  return result;
 }
