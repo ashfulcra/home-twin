@@ -3,16 +3,23 @@
  let home: any = $state(null);
  let loadState = $state('loading');
  let errorMessage = $state('');
+ let review: any[] = $state([]);
+ let kind=$state('note');let entityId=$state('');let field=$state('serial');let value=$state('');let text=$state('');let performedAt=$state('');let saveMessage=$state('');let saving=$state(false);let pending: any=$state(null);
+ async function contribute(){
+  pending??={id:crypto.randomUUID(),homeId:home.id,baseRevision:home.revision,kind,...(entityId?{entityId}:{}),...(kind==='fact'?{field,value}:{text}),...(kind==='maintenance'?{performedAt}: {})};
+  saving=true;saveMessage='';
+  try{const response=await fetch('/api/home/contributions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pending)});const result=await response.json();if(!response.ok){if(response.status===400)pending=null;throw new Error(result.message??'Save could not be confirmed. Retry this contribution.');}if(result.status==='pending-readback'){saveMessage='Submitted; storage confirmation is pending. Retry this same contribution.';}else{pending=null;text='';value='';saveMessage='Saved. Routine additions appear below; contradictions stay in review.';await load();}}catch(e){saveMessage=e instanceof Error?e.message:String(e);}finally{saving=false;}
+ }
  let query = $state('');
  let section = $state('Overview');
- const sections = ['Overview','Equipment','Maintenance','History','Sources'];
+ const sections = ['Overview','Equipment','Maintenance','History','Contributions','Sources'];
  let equipment = $derived((home?.equipment ?? []).filter((item: any) => `${item.name} ${item.system} ${item.model} ${item.room?.name ?? ''}`.toLowerCase().includes(query.toLowerCase())));
  async function load() {
   loadState='loading';errorMessage='';
   try {
    const response=await fetch('/api/home');
    if(!response.ok)throw new Error(response.status===401?'Please sign in again.':'Your home data is temporarily unavailable.');
-   const data=await response.json();home=data.home;loadState=data.status;
+   const data=await response.json();home=data.home;review=data.review??[];loadState=data.status;
   }catch(e){loadState='error';errorMessage=e instanceof Error?e.message:String(e);}
  }
  onMount(load);
@@ -41,6 +48,17 @@
    <section><h2>Maintenance and schedules</h2><p class="muted">A schedule describes what should happen. Service history records what actually happened.</p>{#if home.schedules.length===0}<p>No maintenance schedules recorded yet.</p>{/if}{#each home.schedules as schedule}<article><p class="eyebrow">{schedule.kind} · {schedule.state}</p><h3>{schedule.name}</h3><p>{schedule.description??''}</p><p>Next due: {schedule.dueAt??'Not recorded'}</p>{#each schedule.sources as source}<a href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">Read schedule source</a>{/each}</article>{/each}</section>
   {:else if section==='History'}
    <section><h2>Service history</h2>{#if home.history.length===0}<p>No completed maintenance recorded in the imported evidence. This means the date is unknown, not that maintenance never happened.</p>{/if}{#each home.history as event}<article><h3>{event.title??event.kind}</h3><p>{event.performedAt} · {event.status}</p><p>{event.summary??''}</p></article>{/each}</section>
+  {:else if section==='Contributions'}
+   <section><h2>Add what you know</h2><p>Notes and routine facts help immediately. Contradictions and floor-plan changes wait for the home maintainer’s review.</p>
+    <form onsubmit={(event)=>{event.preventDefault();contribute();}}>
+     <fieldset disabled={saving||!!pending}><label>Type <select bind:value={kind}><option value="note">Note</option><option value="fact">Equipment fact</option><option value="maintenance">Completed maintenance</option><option value="geometry">Layout correction</option></select></label>
+     <label>Equipment <select bind:value={entityId}><option value="">Whole home</option>{#each home.equipment as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
+     {#if kind==='fact'}<label>Fact <select bind:value={field}>{#each ['model','manufacturer','serial','capacity','installedAt'] as name}<option value={name}>{name}</option>{/each}</select></label><label>Value <input bind:value required maxlength="500" /></label>{:else}<label>Description <textarea bind:value={text} required maxlength="10000"></textarea></label>{/if}
+     {#if kind==='maintenance'}<label>Actual service date <input type="date" bind:value={performedAt} required /></label>{/if}</fieldset>
+     <button disabled={saving} type="submit">{saving?'Saving…':pending?'Retry same contribution':'Save contribution'}</button>
+    </form><p role="status">{saveMessage}</p>
+   </section><section><h2>Household notes</h2>{#if !(home.notes??[]).length}<p>No notes yet.</p>{/if}{#each home.notes??[] as note}<article><p>{note.text}</p><p class="muted">Recorded {note.recordedAt} · author {note.authorUserId}</p></article>{/each}</section>
+   <section><h2>Needs review ({review.length})</h2>{#if !review.length}<p>No contributions waiting for review.</p>{/if}{#each review as item}<article><p class="eyebrow">{item.reason}</p><p>{item.contribution.text??`${item.contribution.field}: ${item.contribution.value}`}</p><p class="muted">Contribution {item.contribution.id}</p></article>{/each}<p class="muted">The maintainer reviews these against their sources before updating the accepted home record.</p></section>
   {:else if section==='Sources'}
    <section><h2>Your home knowledge</h2><p class="muted">“Recent” means the source reports verification within 30 days. Importing an old document doesn’t verify its contents.</p>{#each home.sources as source}<article><h3>{source.title}</h3><p>{source.path}</p><p>Verified: {source.verifiedAt??'Not recorded'} · {source.freshness}</p><a href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">Read original source ↗</a></article>{/each}</section>
   {/if}
@@ -48,5 +66,5 @@
 </main>
 
 <style>
- .home-dashboard{max-width:1120px;margin:0 auto;padding:36px 24px 80px;color:#202c2c;font-family:system-ui,sans-serif;background:#f7faf8;min-height:100vh;width:100%;box-sizing:border-box}header{display:flex;justify-content:space-between;align-items:center;gap:24px;margin-bottom:28px}h1{font-size:40px;letter-spacing:-1.4px;margin:8px 0}h2{font-size:25px;margin:0 0 12px}h3{font-size:20px;margin:8px 0}p{line-height:1.6}.eyebrow{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#387367;font-weight:650}.muted{color:#62716d;font-size:14px}nav{display:flex;gap:6px;border-bottom:1px solid #d5e0d9;padding-bottom:12px;flex-wrap:wrap}button,.model-link{padding:10px 16px;border:1px solid #cadbd1;border-radius:8px;background:white;cursor:pointer;color:#254a3c;font-size:14px}nav button{border:0;background:transparent}nav button.active{background:#dceee4}.stats,.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:18px;margin:24px 0}article{background:white;border:1px solid #dbe4df;padding:22px;border-radius:12px;margin:12px 0}.stats article{margin:0}.stats span{font-size:34px;font-weight:650}section{margin-top:32px}a{color:#216c58;text-decoration:underline;text-underline-offset:3px}.model-link{text-decoration:none;white-space:nowrap}.source-link{display:block;margin-top:8px;font-size:13px}li{line-height:1.7;margin-bottom:8px}label{display:block;font-size:14px}input{display:block;width:100%;max-width:480px;padding:12px;border:1px solid #becfc5;border-radius:8px;margin-top:8px;background:white;color:#202c2c}dt{font-size:13px;color:#63736c;margin-top:14px}dd{margin:3px 0;font-size:14px}@media(max-width:600px){header{display:block}.model-link{display:inline-block}.home-dashboard{padding:24px 16px}h1{font-size:32px}}
+ .home-dashboard{max-width:1120px;margin:0 auto;padding:36px 24px 80px;color:#202c2c;font-family:system-ui,sans-serif;background:#f7faf8;min-height:100vh;width:100%;box-sizing:border-box}header{display:flex;justify-content:space-between;align-items:center;gap:24px;margin-bottom:28px}h1{font-size:40px;letter-spacing:-1.4px;margin:8px 0}h2{font-size:25px;margin:0 0 12px}h3{font-size:20px;margin:8px 0}p{line-height:1.6}.eyebrow{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#387367;font-weight:650}.muted{color:#62716d;font-size:14px}nav{display:flex;gap:6px;border-bottom:1px solid #d5e0d9;padding-bottom:12px;flex-wrap:wrap}button,.model-link{padding:10px 16px;border:1px solid #cadbd1;border-radius:8px;background:white;cursor:pointer;color:#254a3c;font-size:14px}nav button{border:0;background:transparent}nav button.active{background:#dceee4}.stats,.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:18px;margin:24px 0}article{background:white;border:1px solid #dbe4df;padding:22px;border-radius:12px;margin:12px 0}.stats article{margin:0}.stats span{font-size:34px;font-weight:650}section{margin-top:32px}a{color:#216c58;text-decoration:underline;text-underline-offset:3px}.model-link{text-decoration:none;white-space:nowrap}.source-link{display:block;margin-top:8px;font-size:13px}li{line-height:1.7;margin-bottom:8px}label{display:block;font-size:14px}fieldset{border:0;padding:0}select,textarea{display:block;padding:12px;margin:8px 0 16px;border:1px solid #becfc5;border-radius:8px;max-width:100%;background:white;color:#202c2c}textarea{width:90%;min-height:100px}input{display:block;width:100%;max-width:480px;padding:12px;border:1px solid #becfc5;border-radius:8px;margin-top:8px;background:white;color:#202c2c}dt{font-size:13px;color:#63736c;margin-top:14px}dd{margin:3px 0;font-size:14px}@media(max-width:600px){header{display:block}.model-link{display:inline-block}.home-dashboard{padding:24px 16px}h1{font-size:32px}}
 </style>
