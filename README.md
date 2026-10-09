@@ -1,143 +1,57 @@
-# Fulcra App Template - Svelte
+# Home Twin
 
-A SvelteKit web application template for building on the Fulcra platform. This template includes:
+A Fulcra-authenticated home dashboard and agent workflow for reducing the work of owning a home. Start with equipment, contacts and care history, then refine a correctable floor plan. Exact dimensions are optional. All examples in this repository are synthetic.
 
-- **SvelteKit** with Svelte 5
-- **Auth0 authentication** via the device flow, with server-side API proxying
-- **Tailwind CSS 4** with DaisyUI
-- **Fulcra brand colors** and styling
-- **ESLint** and **Prettier** configured
-- **Vitest** for testing
+The UI supports guided setup, source-linked equipment and schedules, household contributions, conflict review, and an optional request for a connected home agent. A saved request does not launch an agent. Advanced chat and local captures/device integrations are separate add-ons.
 
-## Getting Started
+## Run locally
 
-1. Install dependencies:
-```bash
+Use a Node version supported by the deployment platform (20, 22 or 24). Copy `.env.example` to `.env`, retain the official Fulcra authentication settings, then:
+
+```sh
 npm install
-```
-
-2. Configure environment variables:
-```bash
-cp .env.example .env
-```
-Then edit `.env` with your Auth0 credentials and Fulcra API endpoint.
-
-3. Run the development server:
-```bash
 npm run dev
-```
-The app will be available at http://localhost:6173/
-
-4. Build for production:
-```bash
+npm test
+npm run check
 npm run build
 ```
 
-## Deployment
+Private data loads from the signed-in user's Fulcra account; it is never bundled into the browser build. New users can choose **guided home setup** or **join a household**. Setup preserves existing records and saves questionnaire evidence without inventing service dates, providers or maintenance intervals.
 
-This template uses `@sveltejs/adapter-auto`, which detects the host at build time — no config change is needed for Vercel, Netlify, Cloudflare Pages, or Azure Static Web Apps.
+For production use Fulcra's official [build-and-deploy-a-web-app skill](https://github.com/fulcradynamics/agent-skills/tree/main/skills/build-and-deploy-a-web-app). Configure the owner's UUID, harness annotation and private workspace before evaluating deployments. The owner-only harness shows real recorded runs and workspace evidence; it is not a static completion checklist.
 
-**Environment variables** — wherever you deploy, set the same three vars from your `.env` in the platform's project settings:
+## Connect a home agent
 
-- `PUBLIC_AUTH0_DOMAIN`
-- `PUBLIC_AUTH0_CLIENT_ID`
-- `PUBLIC_FULCRA_API_ENDPOINT` (point this at a reachable API — not `localhost`)
+Use [maintaining-home-twins](skills/maintaining-home-twins/SKILL.md) with a long-running agent connected to the intended Fulcra account. From the UI, save an agent request and give that agent the home ID. The agent reads the request, maintains a private workstream, preserves original captures, reconciles contributions and records blockers. It should ask for a targeted photo, scan, plan or measurement when that resolves a specific uncertainty; missing geometry does not block equipment or maintenance work.
 
-> No extra Auth0 setup is required for deployed environments: the device-flow login uses no callback URLs, and logout uses no `returnTo`, so nothing needs adding to Auth0's allowlists.
+Keep the full repository alongside the installed skill: copy `skills/maintaining-home-twins/` into your agent’s skills directory, and run its helper from this repository. The skill references this matching runtime; installing the guide alone does not install the application.
 
-### Local
+Data contracts and concrete Fulcra commands are linked from the skill. The local helper performs no remote writes:
 
-```bash
-npm run dev                  # dev server at http://localhost:6173
-npm run build && npm run preview   # preview the production build locally
+```sh
+node scripts/home-agent.mjs validate examples/home.json
+node scripts/home-agent.mjs reconcile accepted.json incoming/ new-report.json
+node scripts/home-agent.mjs sync HOME_ID new-authenticated-report.json
 ```
 
-For a **self-hosted Node server or Docker** (not covered by `adapter-auto`), swap the adapter in `svelte.config.js` to `@sveltejs/adapter-node` (already in `devDependencies`), then:
+`sync` uses the signed-in Fulcra CLI account, checks maintainer identity, reads only registered contributor folders, verifies source-account attribution and retains file IDs and hashes. It saves a local report and performs no remote writes. Unavailable contributor folders remain explicit. Offline JSON author fields alone are not authentication proof.
 
-```bash
-npm run build
-node build
-```
+The report separates accepted routine changes from review items and refuses to overwrite an existing output. One designated maintainer reviews and publishes accepted snapshots, with version readback and handoff responsibility.
 
-### Vercel
+## Household collaboration
 
-**Git integration (recommended):**
+Read [shared homes](docs/shared-homes.md) and [contributions](docs/contributions.md). Each contributor uses their own Fulcra account. Only home-specific folders are shared; both an explicit Fulcra share and a member role are required. Contributors cannot rewrite the maintainer's snapshot. Source account attribution is checked, and contradictions or major geometry changes remain in review.
 
-1. Import the repo at [vercel.com](https://vercel.com) — SvelteKit is auto-detected.
-2. Add the three env vars under Project Settings → Environment Variables.
-3. Every push deploys automatically.
+Collaboration is a pilot until a genuine two-account shared read/contribute/reconcile/revoke workflow has passed. Contract tests do not replace that live check. Revocation blocks future reads; it cannot recall previously downloaded information. Manual review-decision files are preserved, but the current UI does not automatically apply those decisions.
 
-**CLI:**
+## Architecture
 
-```bash
-vercel login
-vercel link                  # create/link the project
-vercel env add PUBLIC_AUTH0_DOMAIN        # repeat for each var
-vercel deploy                # preview deploy
-vercel deploy --prod         # production deploy
-```
+Fulcra originals and immutable contributions → designated maintainer's accepted home record → regenerated dashboard projection. Every source keeps its origin and verification date. Import timestamps, service dates, device observations and sync times have different meanings.
 
-## Authentication
+New homes use `/shared/home-twin/<home-id>/`; this path is private until explicitly shared. The signed-in account keeps its own connection file under `/home/twin/`. Existing local home records can remain there until a deliberate, version-preserving migration. A connection does not grant access by itself.
 
-This template includes Auth0 authentication out of the box, using the **Auth0 Device Authorization Flow** with server-side API proxying:
+## Public and private boundaries
 
-- **Device-flow login**: No callback URLs or Auth0 SPA SDK required; the flow is proxied through server routes to avoid CORS
-- **Access tokens**: Stored in HTTP-only cookies (more secure than localStorage)
-- **API calls**: Proxied through SvelteKit server routes, so calls to the Fulcra API are server-to-server
-- **Full logout**: Revokes the refresh token and clears the Auth0 SSO session, not just local state
-- **Portable**: No CORS issues and no domain allowlisting — works on any platform (Vercel, Netlify, Cloudflare Pages)
+Keep household exports, photos/scans, account IDs, credentials, private runtime logs and deployment evidence outside the repository. Do not turn a real home into a public demo. Use synthetic fixtures and environment configuration. The optional local agent should retain originals in Fulcra and keep device credentials server-side.
 
-### How login works
-
-1. User clicks **Sign In** → the app requests a device code from `/api/auth/device/code`
-2. A popup opens Auth0's verification page; the user confirms the displayed code
-3. The app polls `/api/auth/device/token` until Auth0 returns an access token
-4. The token is stored in an HTTP-only cookie via `/api/auth/token`
-5. Client requests hit `/api/*` server routes, which use the cookie to call the Fulcra API server-to-server
-
-### How logout works
-
-**Sign Out** fully ends the session: it revokes the refresh token (`/api/auth/revoke`), clears the access-token cookie, wipes local state, and opens Auth0's `/v2/logout` to clear the SSO session so the next sign-in requires re-authentication.
-
-The auth logic lives in `src/lib/user.js` and `src/lib/auth0-device-flow.js`. This approach is more secure and doesn't require adding your domain to the Fulcra API CORS allowlist.
-
-## Fulcra API Client
-
-The template includes a `FulcraAPI` class (`src/lib/api-client.js`) for organized access to the Fulcra REST API:
-
-- **High-level methods** for common operations: `getUserInfo()`, `getUserPreferences()`, etc.
-- **Low-level HTTP methods** for flexibility: `get()`, `post()`, `put()`, `delete()`
-- **Designed for extension** — add new methods following the existing pattern
-
-See the [Fulcra REST API documentation](https://docs.fulcradynamics.com/rest-api/) for available endpoints. When you need to call a new endpoint, add a method to `FulcraAPI` and use it from your server routes.
-
-## Project Structure
-
-```
-src/
-├── app.html                        # HTML template
-├── app.d.ts                        # Type declarations
-├── lib/
-│   ├── auth0-device-flow.js        # Auth0 device authorization flow client
-│   ├── user.js                     # User/auth store (login, logout, session)
-│   ├── api-client.js               # FulcraAPI class for calling the Fulcra API
-│   └── components/
-│       └── LoginDeviceFlow.svelte  # Login screen
-└── routes/
-    ├── layout.css                  # Global styles with Fulcra colors
-    ├── +layout.svelte              # Root layout
-    ├── +page.svelte                # Home page
-    └── api/                        # Server routes (auth + API proxy)
-        ├── auth/                   # device/code, device/token, token, revoke
-        └── user/                   # info, preferences
-```
-
-## Scripts
-
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
-- `npm run check` - Run type checking
-- `npm run format` - Format code with Prettier
-- `npm run lint` - Lint code with ESLint
-- `npm test` - Run tests
+Based on the official Fulcra Svelte app template, including its Auth0 device flow and owner harness patterns. Fulcra brand assets remain associated with Fulcra; this repository does not grant rights beyond their original terms.

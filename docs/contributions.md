@@ -1,6 +1,6 @@
 # Household contributions and maintainer recovery
 
-Each home has one designated maintainer. Contributors submit records; they do not rewrite the accepted home snapshot. The current API reads and writes only the signed-in account's home folder. Cross-account sharing is a separate milestone.
+Each home has one designated maintainer. Contributors submit records; they do not rewrite the accepted home snapshot. The API writes only to the signed-in account. Shared reads use explicit home connections and the caller's live Fulcra permissions; see [shared homes](shared-homes.md). Live household collaboration remains a pilot until the two-account acceptance check passes.
 
 A contribution carries a stable UUID, home ID, type, optional equipment ID, and data. The server stamps the authenticated Fulcra user ID and recording time. Client author claims, paths and arbitrary payload fields are discarded. Keep the exact UUID and payload until storage readback confirms the save. An uncertain save should retry the same contribution. Changing content after a known save requires a new UUID.
 

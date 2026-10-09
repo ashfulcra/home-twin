@@ -43,3 +43,9 @@ it('holds facts based on an older snapshot but accepts independent notes',()=>{
  const r=reconcileContributions(h,[{...base,baseRevision:1,kind:'fact',field:'serial',value:'A'},{...base,id:'b',baseRevision:1,kind:'note',text:'Routine note'}]);
  expect(r.review[0].reason).toBe('stale-base-revision');expect(r.accepted).toEqual(['b']);
 });
+
+it('holds forged future maintenance and ignores untrusted competing facts',()=>{
+ const baseline={id:'h',revision:1,equipment:[{id:'e'}]};
+ const result=reconcileContributions(baseline,[{id:'future',homeId:'h',kind:'maintenance',authorUserId:'a',entityId:'e',performedAt:'2099-01-01',recordedAt:'2099-01-02'},{id:'good',homeId:'h',kind:'fact',authorUserId:'a',entityId:'e',field:'serial',value:'123'},{id:'forged',homeId:'h',kind:'fact',authorUserId:null,entityId:'e',field:'serial',value:'456'}]);
+ expect(result.home.history).toHaveLength(0);expect(result.home.equipment[0].serial).toBe('123');
+});

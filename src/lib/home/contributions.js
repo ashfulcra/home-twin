@@ -9,6 +9,7 @@ export function reconcileContributions(baseline, contributions) {
  /** @type {any[]} */ const review=[];
  const unique=new Map();const collisions=new Set();
  for(const c of contributions){
+  if(!c||typeof c!=='object'||Array.isArray(c)){review.push({contribution:{text:'Malformed contribution'},reason:'invalid-shape'});continue;}
   if(c.homeId!==home.id)continue;
   if(unique.has(c.id)&&JSON.stringify(unique.get(c.id))!==JSON.stringify(c))collisions.add(c.id);
   else unique.set(c.id,c);
@@ -29,13 +30,13 @@ export function reconcileContributions(baseline, contributions) {
    if(!home.notes.some((/** @type {any} */ n)=>n.id===c.id))home.notes.push({...c});
   }else if(c.kind==='fact'){
    if(!entity||!fields.has(c.field)||typeof c.value!=='string'||!c.value.trim()){hold(c,'unsupported-fact');continue;}
-   const competing=rows.filter(other=>other.kind==='fact'&&other.entityId===c.entityId&&other.field===c.field);
+   const competing=rows.filter(other=>other.authorUserId&&other.kind==='fact'&&(other.baseRevision===undefined||other.baseRevision===home.revision)&&fields.has(other.field)&&typeof other.value==='string'&&other.value.trim()&&other.entityId===c.entityId&&other.field===c.field);
    const conflict=new Set(competing.map(other=>other.value)).size>1;
    if(conflict || (entity[c.field]!=null&&entity[c.field]!==c.value)){hold(c,'contradiction');continue;}
    entity[c.field]=c.value;
   }else if(c.kind==='maintenance'){
    const performed=Date.parse(c.performedAt);const recorded=Date.parse(c.recordedAt);
-   if(!Number.isFinite(performed)||!Number.isFinite(recorded)||performed>recorded){hold(c,'missing-service-date');continue;}
+   if(!Number.isFinite(performed)||!Number.isFinite(recorded)||performed>recorded||recorded>Date.now()||performed>Date.now()){hold(c,'missing-service-date');continue;}
    if(!home.history.some((/** @type {any} */ h)=>h.id===c.id))home.history.push({...c,equipmentId:c.entityId,status:'completed',summary:c.text});
   }else{hold(c,'review-required');continue;}
   accepted.push(c.id);

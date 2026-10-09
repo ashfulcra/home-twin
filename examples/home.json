@@ -1,0 +1,7 @@
+{
+ "schemaVersion":1,"revision":1,"id":"example-home","name":"Example home","timezone":"UTC",
+ "ownerUserId":"11111111-1111-4111-8111-111111111111","members":[],
+ "rooms":[],"equipment":[{"id":"furnace","name":"Furnace","system":"Heating and cooling","manufacturer":null,"model":null,"roomId":null,"facts":[],"sourceIds":[]}],
+ "contacts":[],"history":[],"schedules":[],"sources":[],"notes":[],"plan":null,
+ "knowledgeGaps":["Furnace service date, provider and maintenance interval are unknown."]
+}

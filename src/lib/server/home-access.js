@@ -12,7 +12,7 @@ export async function resolveHome(token) {
  const api=new FulcraAPI(endpoint,token);const principal=await api.get('user/v1alpha1/info');
  const localRoot=env.HOME_ROOT||'/home/twin';
  const link=await readFulcraFile(endpoint,token,`${localRoot}/connection.json`);
- if(!link){const file=await readFulcraFile(endpoint,token,`${localRoot}/home.json`);return {endpoint,userId:principal.userid,root:localRoot,ownerUserId:principal.userid,role:'maintainer',file,home:file?JSON.parse(file.text):null};}
+ if(!link||JSON.parse(link.text).mode==='own'){const file=await readFulcraFile(endpoint,token,`${localRoot}/home.json`);return {endpoint,userId:principal.userid,root:localRoot,ownerUserId:principal.userid,role:'maintainer',file,home:file?JSON.parse(file.text):null};}
  const connection=validateConnection(JSON.parse(link.text));
  const file=await readFulcraFile(endpoint,token,`${connection.root}/home.json`,connection.ownerUserId);
  if(!file)throw error(403,'Shared home access is unavailable or revoked');
