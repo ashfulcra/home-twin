@@ -15,7 +15,8 @@ export function projectHome(home, asOf) {
     const completed = history.filter((/** @type {any} */ event) => event.equipmentId === item.id && event.kind === 'maintenance' && event.status === 'completed' && Number.isFinite(Date.parse(event.performedAt)) && Date.parse(event.performedAt) <= now).sort((/** @type {any} */ a, /** @type {any} */ b) => Date.parse(b.performedAt) - Date.parse(a.performedAt));
     const lastService = completed[0] ?? null;
     const providerId = item.contactId ?? lastService?.contactId;
-    return { ...item, lastService, provider: (home.contacts ?? []).find((/** @type {any} */ contact) => contact.id === providerId) ?? null, room: (home.rooms ?? []).find((/** @type {any} */ room) => room.id === item.roomId) ?? null, sources: evidence(item) };
+    const fieldContributions=Object.entries(item.fieldEvidence??{}).flatMap(([field,entries])=>Array.isArray(entries)?entries.map(entry=>({...entry,field})):[]);
+    return { ...item, fieldContributions, lastService, provider: (home.contacts ?? []).find((/** @type {any} */ contact) => contact.id === providerId) ?? null, room: (home.rooms ?? []).find((/** @type {any} */ room) => room.id === item.roomId) ?? null, sources: evidence(item) };
   });
   const schedules = (home.schedules ?? []).map((/** @type {any} */ schedule) => {
     const due = Date.parse(schedule.dueAt);

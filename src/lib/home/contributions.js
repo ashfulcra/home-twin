@@ -35,6 +35,8 @@ export function reconcileContributions(baseline, contributions) {
    const conflict=new Set(competing.map(other=>other.value)).size>1;
    if(conflict || (entity[c.field]!=null&&entity[c.field]!==c.value)){hold(c,'contradiction');continue;}
    entity[c.field]=c.value;
+   entity.fieldEvidence??={};entity.fieldEvidence[c.field]??=[];
+   if(!entity.fieldEvidence[c.field].some((/** @type {any} */ e)=>e.contributionId===c.id))entity.fieldEvidence[c.field].push({contributionId:c.id,authorUserId:c.authorUserId,recordedAt:c.recordedAt??null,value:c.value});
   }else if(c.kind==='contact'){
    if(!c.value||!c.field){hold(c,'invalid-contact');continue;}
    if(!home.contacts.some((/** @type {any} */ contact)=>contact.id===c.id))home.contacts.push({id:c.id,name:c.value,trade:c.field,phone:c.phone??null,email:c.email??null,summary:c.text??'',contributionId:c.id,authorUserId:c.authorUserId,recordedAt:c.recordedAt});

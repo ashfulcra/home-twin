@@ -48,6 +48,8 @@ Collaboration is a pilot until a genuine two-account shared read/contribute/reco
 
 The [rough layout editor](docs/layout-drafts.md) offers synthetic examples and an adjacency interview, with direct segment selection and freeform lengths. Estimated drafts stay correctable and require review before replacing an accepted model.
 
+[Device observations](docs/device-feeds.md) use explicitly configured Fulcra sources and separate observation, bridge receipt, record and sync times. The optional publisher keeps vendor credentials outside the web app.
+
 ## Architecture
 
 Fulcra originals and immutable contributions → designated maintainer's accepted home record → regenerated dashboard projection. Every source keeps its origin and verification date. Import timestamps, service dates, device observations and sync times have different meanings.

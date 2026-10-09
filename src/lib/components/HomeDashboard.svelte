@@ -1,4 +1,5 @@
 <script lang="ts">
+ import HomeFeeds from './HomeFeeds.svelte';
  import HomeLayout from './HomeLayout.svelte';
  import HomeCare from './HomeCare.svelte';
  import SharedHomeConnect from './SharedHomeConnect.svelte';
@@ -19,7 +20,7 @@
  }
  let query = $state('');
  let section = $state('Overview');
- const sections = ['Overview','Equipment','Maintenance','History','Care','Layout','Contributions','Sources','Household'];
+ const sections = ['Overview','Equipment','Maintenance','History','Care','Layout','Devices','Contributions','Sources','Household'];
  let equipment = $derived((home?.equipment ?? []).filter((item: any) => `${item.name} ${item.system} ${item.model} ${item.room?.name ?? ''}`.toLowerCase().includes(query.toLowerCase())));
  async function load() {
   loadState='loading';errorMessage='';agentStatus='';
@@ -50,11 +51,13 @@
    <section><h2>What needs a little attention</h2><p class="muted">Missing information stays visible. It won’t stop you using your home.</p><ul>{#each home.knowledgeGaps??[] as gap}<li>{gap}</li>{/each}</ul></section>
    <section><h2>At a glance</h2><div class="cards">{#each home.equipment as item}<article><p class="eyebrow">{item.system}</p><h3 id={'equipment-'+item.id}>{item.name}</h3><p>{item.manufacturer??'Manufacturer unknown'} {item.model??'· model unknown'}</p><p class="muted">Last service: {item.lastService?.performedAt??'Not recorded'}</p><p class="muted">Who to call: {item.provider?.name??'Not recorded'}</p><button onclick={()=>{section='Equipment';query=item.name;}}>View equipment</button></article>{/each}</div></section>
   {:else if section==='Equipment'}
-   <section><h2>Equipment</h2><label>Find equipment <input type="search" bind:value={query} placeholder="Name, system, model or room" /></label><div class="cards">{#each equipment as item}<article><p class="eyebrow">{item.system}</p><h3 id={'equipment-'+item.id}>{item.name}</h3><p>{item.manufacturer??'Manufacturer unknown'} · {item.model??'Model unknown'} · {item.capacity??''}</p><p>Location: {item.room?.name??'Not placed yet'}</p>{#if item.room?.viewerUrl}<a href={item.room.viewerUrl} target="_blank" rel="noreferrer">Open viewer — select {item.room.name} ↗</a>{/if}<dl>{#each item.facts??[] as fact}<dt>{fact.name}</dt><dd>{fact.value}</dd>{/each}<dt>Last maintenance</dt><dd>{item.lastService?.performedAt??'Not recorded'}</dd><dt>Service provider</dt><dd>{item.provider?.name??'Not recorded'}</dd></dl><p class="muted">Evidence</p>{#each item.sources as source}<a class="source-link" href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">{source.title} · {source.freshness}</a>{/each}</article>{/each}</div>{#if equipment.length===0}<p>No equipment matches that search.</p>{/if}</section>
+   <section><h2>Equipment</h2><label>Find equipment <input type="search" bind:value={query} placeholder="Name, system, model or room" /></label><div class="cards">{#each equipment as item}<article><p class="eyebrow">{item.system}</p><h3 id={'equipment-'+item.id}>{item.name}</h3><p>{item.manufacturer??'Manufacturer unknown'} · {item.model??'Model unknown'} · {item.capacity??''}</p><p>Location: {item.room?.name??'Not placed yet'}</p>{#if item.room?.viewerUrl}<a href={item.room.viewerUrl} target="_blank" rel="noreferrer">Open viewer — select {item.room.name} ↗</a>{/if}<dl>{#each item.facts??[] as fact}<dt>{fact.name}</dt><dd>{fact.value}</dd>{/each}<dt>Last maintenance</dt><dd>{item.lastService?.performedAt??'Not recorded'}</dd><dt>Service provider</dt><dd>{item.provider?.name??'Not recorded'}</dd></dl><p class="muted">Contributed field evidence</p>{#each item.fieldContributions as entry}<p class="muted">{entry.field}: {entry.value} · contributed by {entry.authorUserId} · {entry.recordedAt??'Time not recorded'} · contribution {entry.contributionId}</p>{/each}<p class="muted">Original record sources</p>{#each item.sources as source}<a class="source-link" href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">{source.title} · {source.freshness}</a>{/each}</article>{/each}</div>{#if equipment.length===0}<p>No equipment matches that search.</p>{/if}</section>
   {:else if section==='Maintenance'}
    <section><h2>Maintenance and schedules</h2><p class="muted">A schedule describes what should happen. Service history records what actually happened.</p>{#if home.schedules.length===0}<p>No maintenance schedules recorded yet.</p>{/if}{#each home.schedules as schedule}<article><p class="eyebrow">{schedule.kind} · {schedule.state}</p><h3>{schedule.name}</h3><p>{schedule.description??''}</p><p>Next due: {schedule.dueAt??'Not recorded'}</p>{#each schedule.sources as source}<a href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">Read schedule source</a>{/each}</article>{/each}</section>
   {:else if section==='History'}
    <section><h2>Service history</h2>{#if home.history.length===0}<p>No completed maintenance recorded in the imported evidence. This means the date is unknown, not that maintenance never happened.</p>{/if}{#each home.history as event}<article><h3>{event.title??event.kind}</h3><p>{event.performedAt} · {event.status}</p><p>{event.summary??''}</p></article>{/each}</section>
+  {:else if section==='Devices'}
+   <HomeFeeds onEquipment={(id)=>{section='Equipment';query=home.equipment.find((e:any)=>e.id===id)?.name??'';}} />
   {:else if section==='Layout'}
    <HomeLayout {home} {role} />
   {:else if section==='Care'}

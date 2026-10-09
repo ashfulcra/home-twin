@@ -18,7 +18,7 @@ export async function POST({cookies,request}) {
   const digest=createHash('sha256').update(JSON.stringify(input)).digest('hex');
   const path=`${root}/contributions/${input.id}-${digest}.json`;
   const previous=await listFulcraJSON(endpoint,token,`${root}/contributions`);
-  const matches=previous.filter(saved=>saved.id===input.id);
+  const matches=previous.filter(saved=>saved?.id===input.id);
   if(matches.length){const saved=matches[0];const comparable={...saved};delete comparable.authorUserId;delete comparable.recordedAt;
    if(matches.length>1||saved.authorUserId!==principal.userid||JSON.stringify(comparable)!==JSON.stringify(input))throw error(409,'This contribution ID already has different content');
    return json({status:'saved',id:input.id,reused:true});

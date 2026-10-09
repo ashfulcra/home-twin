@@ -20,7 +20,7 @@ export async function listFulcraJSON(endpoint,token,folder,userId) {
  return Promise.all((listing.files??[]).filter((/** @type {any} */ file)=>file.name.endsWith('.json')).map(async(/** @type {any} */ file)=>{
   const response=await fetch(`${endpoint}input/v1/file_upload/${file.id}/download${userId?`?fulcra_userid=${encodeURIComponent(userId)}`:''}`,{headers:{Authorization:`Bearer ${token}`}});
   if(!response.ok)throw new Error(`Fulcra file status ${response.status}`);
-  return JSON.parse(await response.text());
+  const body=await response.text();try{return JSON.parse(body);}catch{return null;}
  }));
 }
 /** @param {string} endpoint @param {string} token @param {string} path @param {any} value */

@@ -19,6 +19,7 @@ describe('durable contributions',()=>{
  it('accepts a missing routine fact with contributor provenance',()=>{
   const result=reconcileContributions(home,[{...base,kind:'fact',field:'serial',value:'ABC'}]);
   expect(result.home.equipment[0].serial).toBe('ABC');expect(result.home.contributionEvidence[0].authorUserId).toBe('member');
+  expect(result.home.equipment[0].fieldEvidence.serial).toEqual([{contributionId:'a',authorUserId:'member',recordedAt:base.recordedAt,value:'ABC'}]);
  });
  it('holds geometry for review and isolates unrelated-home contributions',()=>{
   const result=reconcileContributions(home,[{...base,kind:'geometry',value:{wall:'move'}},{...base,id:'b',homeId:'unrelated',kind:'note',text:'Unrelated'}]);

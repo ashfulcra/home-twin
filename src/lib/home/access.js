@@ -11,5 +11,5 @@ export function homeRole(home,userId) {
 }
 /** @param {any[]} rows @param {string} sourceUserId */
 export function attributeSharedRows(rows,sourceUserId) {
- return rows.map(row=>({...row,sourceUserId,authorUserId:row?.authorUserId===sourceUserId?sourceUserId:null}));
+ return rows.map(row=>!row||typeof row!=='object'||Array.isArray(row)?null:({...row,sourceUserId,authorUserId:row.authorUserId===sourceUserId?sourceUserId:null}));
 }
