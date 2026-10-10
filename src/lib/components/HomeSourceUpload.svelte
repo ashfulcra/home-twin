@@ -1,6 +1,9 @@
 <script lang="ts">
- let {home,role,onchanged}=$props<{home:any,role:string,onchanged:()=>Promise<void>}>();
- let title=$state('');let entityId=$state('');let files:FileList|undefined=$state();let saving=$state(false);let message=$state('');let pending:{id:string,homeId:string,title:string,entityId:string,file:File}|null=$state(null);
+ import {resolveSourcePrefill} from '$lib/home/household-followups.js';
+ import {untrack} from 'svelte';
+ let {home,role,onchanged,prefill=null}=$props<{home:any,role:string,onchanged:()=>Promise<void>,prefill?:any}>();
+ const safePrefill=untrack(()=>resolveSourcePrefill(home,prefill));
+ let title=$state(safePrefill?.title??'');let entityId=$state(safePrefill?.entityId??'');let files:FileList|undefined=$state();let saving=$state(false);let message=$state('');let pending:{id:string,homeId:string,title:string,entityId:string,file:File}|null=$state(null);
  async function save(){
   if(!pending){const file=files?.[0];if(!file){message='Choose a source file.';return;}pending={id:crypto.randomUUID(),homeId:home.id,title,entityId,file};}
   saving=true;message='';const form=new FormData();form.set('id',pending.id);form.set('homeId',pending.homeId);form.set('title',pending.title);if(pending.entityId)form.set('entityId',pending.entityId);form.set('file',pending.file);
