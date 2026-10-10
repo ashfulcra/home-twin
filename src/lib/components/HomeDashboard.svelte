@@ -1,5 +1,6 @@
 <script lang="ts">
  import HomeSourceUpload from './HomeSourceUpload.svelte';
+ import HomeKnowledge from './HomeKnowledge.svelte';
  import HomeFeeds from './HomeFeeds.svelte';
  import HomeLayout from './HomeLayout.svelte';
  import HomeCare from './HomeCare.svelte';
@@ -25,7 +26,7 @@
  }
  let query = $state('');
  let section = $state('Overview');
- const sections = ['Overview','Equipment','Maintenance','History','Care','Layout','Devices','Contributions','Sources','Household'];
+ const sections = ['Overview','Find records','Equipment','Maintenance','History','Care','Layout','Devices','Contributions','Sources','Household'];
  let equipment = $derived((home?.equipment ?? []).filter((item: any) => `${item.name} ${item.system} ${item.model} ${item.room?.name ?? ''}`.toLowerCase().includes(query.toLowerCase())));
  async function load() {
   loadState='loading';errorMessage='';agentStatus='';
@@ -56,6 +57,8 @@
    <section><h2>What needs a little attention</h2><p class="muted">Missing information stays visible. It won’t stop you using your home.</p><ul>{#each home.knowledgeGaps??[] as gap}<li>{gap}</li>{/each}</ul></section>
    <section><h2>Build your home knowledge</h2><p class="muted">Start with one useful record. These questions follow the current home information and routine additions; dates and contacts stay unknown until supported.</p>{#if followups?.questions.length}{#each followups.questions.slice(0,showMoreQuestions?100:3) as q}<article><p>{q.prompt}</p>{#if role!=='viewer'}<button onclick={()=>openFollowup(q)}>{q.destination==='Layout'?'Start a rough layout':q.destination==='Household'?'Home setup':'Add a related record'}</button>{/if}{#if q.entityId}<button onclick={()=>{section='Equipment';query=home.equipment.find((e:any)=>e.id===q.entityId)?.name??'';}}>View equipment</button>{/if}</article>{/each}{#if followups.questions.length>3}<button onclick={()=>showMoreQuestions=!showMoreQuestions}>{showMoreQuestions?'Show fewer questions':'Show more questions'}</button>{/if}{:else}<p>No capture questions from the current records.</p>{/if}{#if followups?.reviewCount}<p>{followups.reviewCount} contributions need maintainer review. <button onclick={()=>section='Contributions'}>View review items</button></p>{/if}{#if followups?.unavailableCount}<p>Some contributor records are unavailable. The maintainer needs to check this home's Fulcra shares.</p>{/if}<button onclick={load}>Refresh home records</button></section>
    <section><h2>At a glance</h2><div class="cards">{#each home.equipment as item}<article><p class="eyebrow">{item.system}</p><h3 id={'equipment-'+item.id}>{item.name}</h3><p>{item.manufacturer??'Manufacturer unknown'} {item.model??'· model unknown'}</p><p class="muted">Last service: {item.lastService?.performedAt??'Not recorded'}</p><p class="muted">Who to call: {item.provider?.name??'Not recorded'}</p><button onclick={()=>{section='Equipment';query=item.name;}}>View equipment</button></article>{/each}</div></section>
+  {:else if section==='Find records'}
+   {#key home.id}<HomeKnowledge {home} onEquipment={(id)=>{section='Equipment';query=home.equipment.find((e:any)=>e.id===id)?.name??'';}} />{/key}
   {:else if section==='Equipment'}
    <section><h2>Equipment</h2><label>Find equipment <input type="search" bind:value={query} placeholder="Name, system, model or room" /></label><div class="cards">{#each equipment as item}<article><p class="eyebrow">{item.system}</p><h3 id={'equipment-'+item.id}>{item.name}</h3><p>{item.manufacturer??'Manufacturer unknown'} · {item.model??'Model unknown'} · {item.capacity??''}</p><p>Location: {item.room?.name??'Not placed yet'}</p>{#if item.room?.viewerUrl}<a href={item.room.viewerUrl} target="_blank" rel="noreferrer">Open viewer — select {item.room.name} ↗</a>{/if}<dl>{#each item.facts??[] as fact}<dt>{fact.name}</dt><dd>{fact.value}</dd>{/each}<dt>Last maintenance</dt><dd>{item.lastService?.performedAt??'Not recorded'}</dd><dt>Service provider</dt><dd>{item.provider?.name??'Not recorded'}</dd></dl><p class="muted">Contributed field evidence</p>{#each item.fieldContributions as entry}<p class="muted">{entry.field}: {entry.value} · contributed by {entry.authorUserId} · {entry.recordedAt??'Time not recorded'} · contribution {entry.contributionId}</p>{/each}<p class="muted">Original record sources</p>{#each item.sources as source}<a class="source-link" href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">{source.title} · {source.freshness}</a>{/each}</article>{/each}</div>{#if equipment.length===0}<p>No equipment matches that search.</p>{/if}</section>
   {:else if section==='Maintenance'}

@@ -87,3 +87,7 @@ The Overview shows a few questions from the current home records and routine con
 ### Portable schematic layout
 
 Layout can show the same estimated room extents in 2D or a selectable 3D schematic. Quarter-turn rotations preserve orientation and room identity, with a north/east compass. The illustrated depth is for readability: it does not represent measured wall heights, openings or stairs. Incomplete room edits show a recoverable placeholder. Saving still creates a review draft; the view never replaces an accepted model.
+
+### Find household knowledge
+
+Find records searches the current home’s equipment facts, providers and their trades, service history and schedules. It shows recorded provider phone/email, actual completed service dates and source links. Search uses words rather than generating an answer; no result means no matching recorded evidence, not absence of the system or maintenance. Held review items and private maintainer journals are excluded.

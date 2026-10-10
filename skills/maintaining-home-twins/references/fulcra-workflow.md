@@ -57,3 +57,7 @@ Overview presents bounded targeted questions from current records and routine co
 ## Schematic layout exploration
 
 Use the hosted Layout 2D/3D switch to explore synthetic starters or interview drafts. Both views use the same room coordinates and selection. The compass follows quarter-turn rotations without reflection. Illustrated depth is not a height measurement; request captures for irregular walls, openings and stairs. Changing the view does not save a draft or update accepted geometry.
+
+## Household record lookup
+
+Use Find records for system, provider/trade, model or care-task words. Equipment results show actual completed service and recorded provider, while history and schedules keep their own status/date. Open source links before resolving uncertainty. No match or missing date/contact stays unknown; do not turn it into a negative home fact. Search contains only the current authenticated home records, not held proposals or private agent journals.
