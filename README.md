@@ -91,3 +91,7 @@ Layout can show the same estimated room extents in 2D or a selectable 3D schemat
 ### Find household knowledge
 
 Find records searches the current home’s equipment facts, providers and their trades, service history and schedules. It shows recorded provider phone/email, actual completed service dates and source links. Search uses words rather than generating an answer; no result means no matching recorded evidence, not absence of the system or maintenance. Held review items and private maintainer journals are excluded.
+
+### Changes to original evidence
+
+Add `--check-sources` to the maintainer `cycle` command to compare referenced Fulcra originals against their recorded checksums. Changed originals create private source-review work; absent checksums and inaccessible originals remain explicit. This is read-only and does not replace accepted facts. It checks at most 100 originals, streams at most 10 MiB per file, and uses the current caller’s permissions. New homes stay within their source folder; explicit legacy homes can reference their owner’s `home/` vault documents. Repeated unchanged audited cycles are silent. Use the flag consistently for a given monitoring flow. `publish` remains separate and does not accept this flag.

@@ -61,3 +61,7 @@ Use the hosted Layout 2D/3D switch to explore synthetic starters or interview dr
 ## Household record lookup
 
 Use Find records for system, provider/trade, model or care-task words. Equipment results show actual completed service and recorded provider, while history and schedules keep their own status/date. Open source links before resolving uncertainty. No match or missing date/contact stays unknown; do not turn it into a negative home fact. Search contains only the current authenticated home records, not held proposals or private agent journals.
+
+## Changed original evidence
+
+Use `cycle HOME_ID PRIVATE_STATE_DIR --check-sources` (plus explicit `--legacy-root` when applicable) to include current original-source checksums in stable private work. Compare changed originals with accepted dependent facts before creating contributions or review decisions. Missing checksums require a first inspected baseline; missing/revoked reads are blockers, not proof the original is unchanged. Do not automatically replace facts or geometry, rewrite stored checksum evidence, or borrow a contributor token. Limits are 100 sources and 10 MiB per original. The audit reads registered attachment authors through current shares; it grants nothing. The existing publication protocol remains a separate explicit action.

@@ -1,10 +1,11 @@
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
+import {auditHomeSources} from './source-audit.mjs';
 import {ingestHome} from '../src/lib/home/ingestion.js';
 /** Tokens remain in memory; no whole-user-info response is printed or persisted.
- * @param {string} homeId @param {{root?:string}} options */
+ * @param {string} homeId @param {{root?:string,checkSources?:boolean}} options */
 export async function syncHome(homeId,options={}){return createMaintainerClient(homeId,options).read();}
-/** @param {string} homeId @param {{root?:string}} options */
+/** @param {string} homeId @param {{root?:string,checkSources?:boolean}} options */
 export function createMaintainerClient(homeId,options={}){
  if(!/^[a-z0-9][a-z0-9-]{0,79}$/.test(homeId))throw new Error('Invalid home ID');
  const endpoint='https://api.fulcradynamics.com/';
@@ -12,7 +13,7 @@ export function createMaintainerClient(homeId,options={}){
  async function get(/** @type {string} */ path){const r=await fetch(endpoint+path,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(15000)});if(!r.ok)throw new Error(`Fulcra read status ${r.status}`);return r;}
  const root=options.root??`/shared/home-twin/${homeId}`;
  if(!['/home/twin',`/shared/home-twin/${homeId}`].includes(root))throw Error('Invalid home root');
- return {read:()=>readMaintainerHome(homeId,root,get),
+ return {read:()=>readMaintainerHome(homeId,root,get,options),
   readSnapshot:async (/** @type {string} */ path)=>{if(!path.startsWith(root+'/history/'))throw Error('Only intended home history may be inspected');const split=path.lastIndexOf('/');const listing=await(await get(`input/v1/file_upload?path=${encodeURIComponent(path.slice(0,split))}`)).json();const file=listing.files?.find((/** @type {any} */ f)=>f.name===path.slice(split+1));return file?await(await get(`input/v1/file_upload/${encodeURIComponent(file.id)}/download`)).json():null;},
   write:async (/** @type {string} */ path,/** @type {any} */ value,/** @type {(()=>Promise<void>)|undefined} */ beforeCommit=undefined)=>{
    if(path!==root+'/home.json'&&!new RegExp('^'+root+'/history/[a-f0-9]{64}\\.json$').test(path))throw Error('Only intended home snapshot/history may be written');
@@ -25,8 +26,8 @@ export function createMaintainerClient(homeId,options={}){
   }};
 }
 /** Read only the intended home through current caller permissions.
- * @param {string} homeId @param {string} root @param {(path:string)=>Promise<Response>} get */
-export async function readMaintainerHome(homeId,root,get){
+ * @param {string} homeId @param {string} root @param {(path:string)=>Promise<Response>} get @param {{checkSources?:boolean}} options */
+export async function readMaintainerHome(homeId,root,get,options={}){
  if(!/^[a-z0-9][a-z0-9-]{0,79}$/.test(homeId)||!['/home/twin',`/shared/home-twin/${homeId}`].includes(root))throw Error('Invalid home ID or home root');
  const receipts=[];
  const principal=await(await get('user/v1alpha1/info')).json();const userId=principal.userid;
@@ -50,7 +51,8 @@ export async function readMaintainerHome(homeId,root,get){
  if(home.ownerUserId!==userId)throw Error('Only the authenticated home maintainer can ingest household contributions');
  receipts.push({sourceUserId:userId,fileId:file.id,path:`${root}/home.json`,sha256:createHash('sha256').update(body).digest('hex')});
  const ingested=await ingestHome(home,userId,async account=>(await readFolder(`${root}/contributions`,account)).map(row=>row.value));
+ const audit=options.checkSources?await auditHomeSources(home,root,get):null;if(audit)receipts.push(...audit.receipts);
  const latest=await(await get(`input/v1/file_upload?path=${encodeURIComponent(root)}`)).json();const current=latest.files?.find((/** @type {any} */ f)=>f.name==='home.json');
  if(!current||current.id!==file.id||(await(await get(`input/v1/file_upload/${encodeURIComponent(current.id)}/download`)).text())!==body)throw Error('Baseline changed during intake; retry with fresh state');
- return {home,principalId:userId,root,...ingested,receipts,ingestedAt:new Date().toISOString(),baselineVersion:file.id};
+ return {home,principalId:userId,root,...ingested,...(audit?{sourceChecks:audit.checks}:{}),receipts,ingestedAt:new Date().toISOString(),baselineVersion:file.id};
 }

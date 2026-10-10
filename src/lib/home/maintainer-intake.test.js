@@ -19,3 +19,8 @@ test('arbitrary roots, mismatched home IDs and contributor principals cannot dri
 test('baseline changed during contributor reads cannot be returned as coherent intake',async()=>{
  let changed=false;const drifting=async (/** @type {string} */ p)=>{if(p.includes('contributions')){changed=true;return Response.json({files:[]});}if(p.includes('/baseline/download')&&changed)return Response.json({...home,revision:9});return get(p);};await expect(readMaintainerHome('example','/home/twin',drifting)).rejects.toThrow('changed');
 });
+test('optional source audit completes before the final baseline coherence check',async()=>{
+ let changed=false;const sourceHome={...home,sources:[{id:'manual',path:'/home/manual.md'}]};
+ const original=async (/** @type {string} */ p)=>{if(p.includes('/original/download')){changed=true;return new Response('new original');}if(p.includes(encodeURIComponent('/home'))&&!p.includes(encodeURIComponent('/home/twin')))return Response.json({files:[{name:'manual.md',id:'original'}]});if(p.includes('/baseline/download'))return Response.json({...sourceHome,...(changed?{revision:2}:{})});return get(p);};
+ await expect(readMaintainerHome('example','/home/twin',original,{checkSources:true})).rejects.toThrow('changed');
+});
