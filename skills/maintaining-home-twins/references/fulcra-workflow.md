@@ -53,3 +53,7 @@ A pending intent is resolved before fresh publication. If current data differs f
 ## Household capture questions
 
 Overview presents bounded targeted questions from current records and routine contributions. Direct a household member to the relevant question's related-record action for a label photo, actual service record or provider contact, or Layout for an optional rough plan. The source form preselects the related unit, but the person must choose the original. A new source alone does not prove a fact or completed service. Review originals, reconcile changes and refresh the home; answered questions disappear when the supporting record is present. Private agent journals remain separate from this household projection.
+
+## Schematic layout exploration
+
+Use the hosted Layout 2D/3D switch to explore synthetic starters or interview drafts. Both views use the same room coordinates and selection. The compass follows quarter-turn rotations without reflection. Illustrated depth is not a height measurement; request captures for irregular walls, openings and stairs. Changing the view does not save a draft or update accepted geometry.

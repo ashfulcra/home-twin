@@ -83,3 +83,7 @@ The runtime uses one captured caller token, rechecks baseline and contributions 
 ### Targeted household captures
 
 The Overview shows a few questions from the current home records and routine contributions, with more available on demand. Missing service dates, provider contacts and equipment details remain questions. A related-record shortcut preselects the equipment in Sources; the user still chooses and saves the original file. Shortcuts are scoped to their home and revision, and viewers cannot submit records. Questions are recomputed with current caller permissions on refresh; private maintainer journals are never exported into the UI.
+
+### Portable schematic layout
+
+Layout can show the same estimated room extents in 2D or a selectable 3D schematic. Quarter-turn rotations preserve orientation and room identity, with a north/east compass. The illustrated depth is for readability: it does not represent measured wall heights, openings or stairs. Incomplete room edits show a recoverable placeholder. Saving still creates a review draft; the view never replaces an accepted model.
