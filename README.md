@@ -42,7 +42,7 @@ node scripts/home-agent.mjs review accepted.json incoming/ decisions.json new-ca
 
 The report separates accepted routine changes from review items and refuses to overwrite an existing output. One designated maintainer reviews and publishes accepted snapshots, with version readback and handoff responsibility.
 
-Care includes provider lookup, actual service dates and optional assigned chores. See [home care](docs/home-care.md) for date, completion and reminder behavior.
+Care includes provider lookup, actual service dates, optional assigned chores and explicit recurring tasks. See [home care](docs/home-care.md) for date, completion and reminder behavior.
 
 ## Household collaboration
 

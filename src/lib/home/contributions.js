@@ -1,3 +1,4 @@
+import {validRecurrence,validCompletionOccurrence} from './recurrence.js';
 import {canonicalJSON} from './canonical-json.js';
 /** Immutable contributions are reconciled against a baseline; conflicting new
  * values are held together rather than resolved by arrival order.
@@ -22,7 +23,7 @@ export function reconcileContributions(baseline, contributions) {
   if(collisions.has(c.id)||decisions.length!==1||!['reject','accept-fact'].includes(decisions[0].action)||canonicalJSON(decisions[0].contribution)!==canonicalJSON(c)){review.push({contribution:c,reason:'review-decision-mismatch'});return false;}
   resolved.push(c.id);return false;
  });
- const rows=unresolved.sort((a,b)=>Number(a.kind==='task-completion')-Number(b.kind==='task-completion'));
+ const rows=unresolved.sort((a,b)=>Number(a.kind==='task-completion')-Number(b.kind==='task-completion')|| (a.kind==='task-completion'&&b.kind==='task-completion'?String(a.occurrenceDueAt??'').localeCompare(String(b.occurrenceDueAt??'')):0));
  /** @param {any} c @param {string} reason */
  const hold=(c,reason)=>review.push({contribution:c,reason});
  const fields=new Set(['model','manufacturer','serial','capacity','installedAt']);
@@ -50,10 +51,12 @@ export function reconcileContributions(baseline, contributions) {
    if(!home.contacts.some((/** @type {any} */ contact)=>contact.id===c.id))home.contacts.push({id:c.id,name:c.value,trade:c.field,phone:c.phone??null,email:c.email??null,summary:c.text??'',contributionId:c.id,authorUserId:c.authorUserId,recordedAt:c.recordedAt});
   }else if(c.kind==='schedule'){
    if(!c.value||!['maintenance','chore'].includes(c.field)||!Number.isFinite(Date.parse(c.dueAt))){hold(c,'invalid-schedule');continue;}
-   if(!home.schedules.some((/** @type {any} */ task)=>task.id===c.id))home.schedules.push({id:c.id,name:c.value,kind:c.field,dueAt:c.dueAt,assignee:c.assignee??null,equipmentId:c.entityId??null,description:c.text??'',contributionId:c.id,authorUserId:c.authorUserId,recordedAt:c.recordedAt});
+   if(c.recurrence!==undefined&&!validRecurrence(c.recurrence,c.dueAt)){hold(c,'invalid-recurrence');continue;}
+   if(!home.schedules.some((/** @type {any} */ task)=>task.id===c.id))home.schedules.push({id:c.id,name:c.value,kind:c.field,dueAt:c.dueAt,...(c.recurrence?{recurrence:{every:c.recurrence.every,unit:c.recurrence.unit}}:{}),assignee:c.assignee??null,equipmentId:c.entityId??null,description:c.text??'',contributionId:c.id,authorUserId:c.authorUserId,recordedAt:c.recordedAt});
   }else if(c.kind==='task-completion'){
    const schedule=home.schedules.find((/** @type {any} */ task)=>task.id===c.scheduleId);
    if(!schedule||!Number.isFinite(Date.parse(c.performedAt))||Date.parse(c.performedAt)>Date.now()||!Number.isFinite(Date.parse(c.recordedAt))||Date.parse(c.recordedAt)>Date.now()||Date.parse(c.performedAt)>Date.parse(c.recordedAt)){hold(c,'invalid-task-completion');continue;}
+   if(schedule.recurrence&&!validCompletionOccurrence(schedule,home.history,c.occurrenceDueAt)){hold(c,'invalid-task-occurrence');continue;}
    if(!home.history.some((/** @type {any} */ h)=>h.id===c.id))home.history.push({...c,kind:schedule.kind,equipmentId:schedule.equipmentId??null,status:'completed',title:schedule.name,summary:c.text});
   }else if(c.kind==='maintenance'){
    const performed=Date.parse(c.performedAt);const recorded=Date.parse(c.recordedAt);
@@ -74,7 +77,7 @@ export function validateContribution(input) {
  if(!['note','fact','maintenance','geometry','contact','schedule','task-completion'].includes(input.kind))throw new Error('Unsupported contribution type');
  /** @type {any} */ const result={id:input.id,homeId:input.homeId,kind:input.kind};
  if(input.baseRevision!==undefined){if(!Number.isSafeInteger(input.baseRevision)||input.baseRevision<0)throw new Error('Invalid base revision');result.baseRevision=input.baseRevision;}
- for(const field of ['entityId','field','value','text','performedAt','phone','email','dueAt','assignee','scheduleId','contactId']){
+ for(const field of ['entityId','field','value','text','performedAt','phone','email','dueAt','assignee','scheduleId','contactId','occurrenceDueAt']){
   if(input[field]!==undefined){if(typeof input[field]!=='string'||input[field].length>(field==='text'?10000:500))throw new Error('Contribution is too long or invalid');result[field]=input[field].trim();}
  }
  if(['note','geometry','maintenance','task-completion'].includes(input.kind)&&!result.text)throw new Error('Add a description');
@@ -82,6 +85,7 @@ export function validateContribution(input) {
  if(['maintenance','task-completion'].includes(input.kind)&&(!Number.isFinite(Date.parse(result.performedAt))||Date.parse(result.performedAt)>Date.now()))throw new Error('Enter the actual past service date');
  if(input.kind==='contact'&&(!result.value||!result.field))throw new Error('Add provider name and trade');
  if(input.kind==='schedule'&&(!result.value||!['maintenance','chore'].includes(result.field)||!Number.isFinite(Date.parse(result.dueAt))))throw new Error('Choose chore or maintenance and an explicit due date');
+ if(input.recurrence!==undefined){if(input.kind!=='schedule'||!validRecurrence(input.recurrence,result.dueAt))throw new Error('Enter a valid explicit recurrence with a calendar due date');result.recurrence={every:input.recurrence.every,unit:input.recurrence.unit};}
  if(input.kind==='task-completion'&&!result.scheduleId)throw new Error('Choose the scheduled task');
  return result;
 }

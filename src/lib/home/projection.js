@@ -1,3 +1,4 @@
+import {nextOccurrence} from './recurrence.js';
 /** Build a read model without turning absent evidence into facts.
  * @param {any} home @param {string} asOf
  */
@@ -19,9 +20,10 @@ export function projectHome(home, asOf) {
     return { ...item, fieldContributions, lastService, provider: (home.contacts ?? []).find((/** @type {any} */ contact) => contact.id === providerId) ?? null, room: (home.rooms ?? []).find((/** @type {any} */ room) => room.id === item.roomId) ?? null, sources: evidence(item) };
   });
   const schedules = (home.schedules ?? []).map((/** @type {any} */ schedule) => {
-    const due = Date.parse(schedule.dueAt);
-    const completion=history.filter((/** @type {any} */ event)=>event.scheduleId===schedule.id&&event.status==='completed'&&Number.isFinite(Date.parse(event.performedAt))&&Date.parse(event.performedAt)<=now).sort((/** @type {any} */ a,/** @type {any} */ b)=>Date.parse(b.performedAt)-Date.parse(a.performedAt))[0]??null;
-    return { ...schedule, completion, state: completion?'completed': !Number.isFinite(due) ? 'unscheduled' : (/^\d{4}-\d{2}-\d{2}$/.test(schedule.dueAt)?schedule.dueAt<localDay:due < now) ? 'past-due' : 'upcoming', sources: evidence(schedule) };
+    const nextDue=schedule.recurrence?nextOccurrence(schedule,history,now):schedule.dueAt;
+    const due = Date.parse(nextDue);
+    const completion=schedule.recurrence?null:history.filter((/** @type {any} */ event)=>event.scheduleId===schedule.id&&event.status==='completed'&&Number.isFinite(Date.parse(event.performedAt))&&Date.parse(event.performedAt)<=now).sort((/** @type {any} */ a,/** @type {any} */ b)=>Date.parse(b.performedAt)-Date.parse(a.performedAt))[0]??null;
+    return { ...schedule, dueAt:nextDue, anchorDueAt:schedule.dueAt, completion, state: completion?'completed': !Number.isFinite(due) ? (schedule.recurrence?'review-required':'unscheduled') : (/^\d{4}-\d{2}-\d{2}$/.test(nextDue)?nextDue<localDay:due < now) ? 'past-due' : 'upcoming', sources: evidence(schedule) };
   });
   return { ...home, sources, equipment, schedules, history, asOf };
 }
