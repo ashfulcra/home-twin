@@ -1,6 +1,6 @@
 # Home Twin
 
-A Fulcra-authenticated home dashboard and agent workflow for reducing the work of owning a home. Start with equipment, contacts and care history, then refine a correctable floor plan. Exact dimensions are optional. All examples in this repository are synthetic.
+A Fulcra-authenticated home dashboard and agent workflow for reducing the work of owning a home. Start with equipment, contacts and care history, then refine a correctable floor plan. Exact dimensions are optional. All examples in this repository are synthetic. GitHub validation runs the locked install, tests, type checks and build without private credentials.
 
 The UI supports guided setup, source-linked equipment and schedules, household contributions, conflict review, and an optional request for a connected home agent. A saved request does not launch an agent. Advanced chat and local captures/device integrations are separate add-ons.
 
@@ -35,6 +35,7 @@ node scripts/home-agent.mjs validate examples/home.json
 node scripts/home-agent.mjs brief examples/home.json new-private-brief.json
 node scripts/home-agent.mjs reconcile accepted.json incoming/ new-report.json
 node scripts/home-agent.mjs sync HOME_ID new-authenticated-report.json
+node scripts/home-agent.mjs review accepted.json incoming/ decisions.json new-candidate.json
 ```
 
 `sync` uses the signed-in Fulcra CLI account, checks maintainer identity, reads only registered contributor folders, verifies source-account attribution and retains file IDs and hashes. It saves a local report and performs no remote writes. Unavailable contributor folders remain explicit. Offline JSON author fields alone are not authentication proof.
@@ -47,11 +48,11 @@ Care includes provider lookup, actual service dates and optional assigned chores
 
 Read [shared homes](docs/shared-homes.md) and [contributions](docs/contributions.md). Each contributor uses their own Fulcra account. Only home-specific folders are shared; both an explicit Fulcra share and a member role are required. Contributors cannot rewrite the maintainer's snapshot. Source account attribution is checked, and contradictions or major geometry changes remain in review.
 
-Collaboration is a pilot until a genuine two-account shared read/contribute/reconcile/revoke workflow has passed. Contract tests do not replace that live check. Revocation blocks future reads; it cannot recall previously downloaded information. Manual review-decision files are preserved, but the current UI does not automatically apply those decisions.
+Collaboration is a pilot until a genuine two-account shared read/contribute/reconcile/revoke workflow has passed. Contract tests do not replace that live check. Revocation blocks future reads; it cannot recall previously downloaded information. Manual review-decision files are preserved, but the local helper prepares reviewed fact candidates, while the UI does not publish those decisions automatically.
 
 The [rough layout editor](docs/layout-drafts.md) offers synthetic examples and an adjacency interview, with direct segment selection and freeform lengths. Estimated drafts stay correctable and require review before replacing an accepted model.
 
-[Device observations](docs/device-feeds.md) use explicitly configured Fulcra sources and separate observation, bridge receipt, record and sync times. The optional publisher keeps vendor credentials outside the web app.
+[Device observations](docs/device-feeds.md) use explicitly configured Fulcra sources and separate observation, bridge receipt, record and sync times. The optional read-only capture helper supports configured Home Assistant and PurpleAir endpoints; capture and publication are separate, and vendor credentials remain outside the web app.
 
 ## Architecture
 

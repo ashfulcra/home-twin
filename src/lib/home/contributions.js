@@ -1,3 +1,4 @@
+import {canonicalJSON} from './canonical-json.js';
 /** Immutable contributions are reconciled against a baseline; conflicting new
  * values are held together rather than resolved by arrival order.
  * @param {any} baseline @param {any[]} contributions
@@ -11,10 +12,17 @@ export function reconcileContributions(baseline, contributions) {
  for(const c of contributions){
   if(!c||typeof c!=='object'||Array.isArray(c)){review.push({contribution:{text:'Malformed contribution'},reason:'invalid-shape'});continue;}
   if(c.homeId!==home.id)continue;
-  if(unique.has(c.id)&&JSON.stringify(unique.get(c.id))!==JSON.stringify(c))collisions.add(c.id);
+  if(unique.has(c.id)&&canonicalJSON(unique.get(c.id))!==canonicalJSON(c))collisions.add(c.id);
   else unique.set(c.id,c);
  }
- const rows=[...unique.values()].sort((a,b)=>Number(a.kind==='task-completion')-Number(b.kind==='task-completion'));
+ /** @type {string[]} */ const resolved=[];
+ const unresolved=[...unique.values()].filter(c=>{
+  const decisions=(home.reviewDecisions??[]).filter((/** @type {any} */ d)=>d.contributionId===c.id);
+  if(!decisions.length)return true;
+  if(collisions.has(c.id)||decisions.length!==1||!['reject','accept-fact'].includes(decisions[0].action)||canonicalJSON(decisions[0].contribution)!==canonicalJSON(c)){review.push({contribution:c,reason:'review-decision-mismatch'});return false;}
+  resolved.push(c.id);return false;
+ });
+ const rows=unresolved.sort((a,b)=>Number(a.kind==='task-completion')-Number(b.kind==='task-completion'));
  /** @param {any} c @param {string} reason */
  const hold=(c,reason)=>review.push({contribution:c,reason});
  const fields=new Set(['model','manufacturer','serial','capacity','installedAt']);
@@ -55,7 +63,7 @@ export function reconcileContributions(baseline, contributions) {
   accepted.push(c.id);
   if(!home.contributionEvidence.some((/** @type {any} */ e)=>e.id===c.id))home.contributionEvidence.push({...c});
  }
- return {home,accepted,review};
+ return {home,accepted,review,resolved};
 }
 
 /** Accept only portable data, never paths, authority claims or commands.

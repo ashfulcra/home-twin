@@ -7,3 +7,7 @@ test('stale, offline, invalid future time and missing feeds stay honest',()=>{ex
 test('only configured annotation type IDs, bounded freshness and normalized payload supported',()=>{expect(()=>validateFeed({...feed,dataType:'../../secrets'})).toThrow();expect(()=>validateFeed({...feed,freshnessSeconds:-1})).toThrow();expect(normalizeObservation({note:JSON.stringify(a),time:'2026-10-09T10:00:03Z'})?.id).toBe('a');});
 test('retrieval covers the configured freshness window with one day of stale evidence',()=>{expect(feedWindowSeconds({...feed,freshnessSeconds:604800})).toBe(691200);expect(feedWindowSeconds(feed)).toBeGreaterThanOrEqual(86400);});
 test('duplicate receipt metadata cannot invalidate a valid source observation in either arrival order',()=>{for(const receivedAt of ['invalid','2099-01-01']){const bad={...a,receivedAt};for(const records of [[a,bad],[bad,a]]){const p=projectFeed(feed,records,'2026-10-09T10:02:00Z');expect(p.state).toBe('recent');expect(p.latest.receivedAt).toBe(a.receivedAt);expect(p.count).toBe(1);}}});
+test('an unknown controller state is not presented as a recent usable reading',()=>{
+ const r=projectFeed({freshnessSeconds:300},[{schema:'home-twin-observation/1',id:'unknown',equipmentId:'e',value:null,availability:'unknown',observedAt:'2026-10-09T12:00:00Z'}],'2026-10-09T12:00:02Z');
+ expect(r.state).toBe('unknown');
+});

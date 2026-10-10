@@ -14,7 +14,7 @@ export function normalizeObservation(record){
  let p=record;if(typeof record?.note==='string'){try{p=JSON.parse(record.note);}catch{return null;}}
  if(!p||p.schema!=='home-twin-observation/1'||typeof p.id!=='string'||!p.id||p.id.length>150||typeof p.equipmentId!=='string'||p.equipmentId.length>100)return null;
  if(!['number','string','boolean'].includes(typeof p.value)&&p.value!==null)return null;if(typeof p.value==='number'&&!Number.isFinite(p.value))return null;if(typeof p.value==='string'&&p.value.length>1000)return null;
- return {schema:p.schema,id:p.id,homeId:p.homeId,equipmentId:p.equipmentId,metric:p.metric??null,observedAt:p.observedAt??null,receivedAt:p.receivedAt??null,fulcraRecordedAt:record.recorded_at??null,value:p.value,unit:typeof p.unit==='string'?p.unit.slice(0,40):'',availability:['online','offline'].includes(p.availability)?p.availability:'unknown',synthetic:p.synthetic===true};
+ return {schema:p.schema,id:p.id,homeId:p.homeId,equipmentId:p.equipmentId,metric:p.metric??null,observedAt:p.observedAt??null,receivedAt:p.receivedAt??null,fulcraRecordedAt:record.recorded_at??null,value:p.value,unit:typeof p.unit==='string'?p.unit.slice(0,40):'',availability:['online','offline'].includes(p.availability)?p.availability:'unknown',sourceTimeBasis:['controller-report','controller-update','device-clock'].includes(p.sourceTimeBasis)?p.sourceTimeBasis:null,synthetic:p.synthetic===true};
 }
 /** Observation ordering is independent of arrival order. Conflicting IDs stay explicit.
  * @param {any} feed @param {any[]} records @param {string} asOf */
@@ -28,6 +28,6 @@ export function projectFeed(feed,records,asOf){
  }
  const all=[...unique.values()].filter(p=>!conflicts.has(p.id));const valid=all.filter(p=>Number.isFinite(Date.parse(p.observedAt))&&Date.parse(p.observedAt)<=now&&(!p.receivedAt||Date.parse(p.receivedAt)<=now));
  const latest=valid.sort((a,b)=>Date.parse(b.observedAt)-Date.parse(a.observedAt)||a.id.localeCompare(b.id))[0]??all[0]??null;
- const state=conflicts.size?'conflict':!latest?(invalidCount?'unknown':'no-data'):!valid.includes(latest)?'unknown':latest.availability==='offline'?'offline':now-Date.parse(latest.observedAt)>feed.freshnessSeconds*1000?'stale':'recent';
+ const state=conflicts.size?'conflict':!latest?(invalidCount?'unknown':'no-data'):!valid.includes(latest)?'unknown':latest.availability==='offline'?'offline':latest.availability!=='online'||latest.value===null?'unknown':now-Date.parse(latest.observedAt)>feed.freshnessSeconds*1000?'stale':'recent';
  return {...feed,latest,state,count:unique.size,invalidCount,conflictCount:conflicts.size,syncedAt:asOf};
 }
