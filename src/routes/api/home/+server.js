@@ -2,6 +2,7 @@ import {resolveHome} from '$lib/server/home-access.js';
 import {readHomeContributions} from '$lib/server/home-contributions.js';
 import { error, json } from '@sveltejs/kit';
 import {reconcileContributions} from '$lib/home/contributions.js';
+import {buildReviewPacket} from '$lib/home/review-packet.js';
 import { projectHome } from '$lib/home/projection.js';
 export async function GET({cookies}) {
  const token=cookies.get('fulcra_access_token');if(!token)throw error(401,'Sign in to view your home');
@@ -11,7 +12,7 @@ export async function GET({cookies}) {
   if(home.schemaVersion!==1)throw error(422,'Unsupported home data version');
   const {rows,unavailable}=await readHomeContributions(access,token);
   const result=reconcileContributions(home,rows);
-  return json({status:'ready',home:projectHome(result.home,new Date().toISOString()),review:result.review,accepted:result.accepted,role:access.role,unavailableMembers:unavailable,fileVersion:file.id},{headers:{'Cache-Control':'private, no-store'}});
+  return json({status:'ready',home:projectHome(result.home,new Date().toISOString()),review:result.review,reviewContext:buildReviewPacket(home,result.review,{role:access.role,fileVersion:file.id}).items,accepted:result.accepted,role:access.role,unavailableMembers:unavailable,fileVersion:file.id},{headers:{'Cache-Control':'private, no-store'}});
  }catch(err){
   if(err instanceof Error && /status 403|failed: 403/.test(err.message))throw error(403,'Shared home access is unavailable or revoked');
   if(err instanceof Error && /status 401|failed: 401/.test(err.message))throw error(401,'Session expired');
