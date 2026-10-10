@@ -1,0 +1,19 @@
+import {test,expect} from 'vitest';
+import {buildPublicationIntent,executePublication} from '../../../scripts/maintainer-publish.mjs';
+const home={schemaVersion:1,id:'example',name:'Example',revision:1,ownerUserId:'owner',equipment:[{id:'heat',name:'Heat',model:null}],rooms:[],sources:[]};
+const note={id:'n',homeId:'example',kind:'note',text:'Filter checked',authorUserId:'owner'};
+const input={home,principalId:'owner',root:'/shared/home-twin/example',baselineVersion:'v1',rows:[note,{id:'g',homeId:'example',kind:'geometry',text:'Move wall',authorUserId:'owner'}],unavailableMembers:[],receipts:[]};
+function transport(){let current=structuredClone(input);const files=new Map();
+/** @type {string[]} */
+ const writes=[];return {read:async()=>structuredClone(current),readSnapshot:async (/** @type {string} */ path)=>files.get(path)??null,write:async(/** @type {string} */ path,/** @type {any} */ value,/** @type {(()=>Promise<void>)|undefined} */ guard=undefined)=>{if(guard)await guard();writes.push(path);files.set(path,structuredClone(value));if(path.endsWith('/home.json'))current={...current,home:structuredClone(value),baselineVersion:'v2'};},writes,set: (/** @type {any} */ v)=>{current=v;}};}
+test('routine intent preserves prior snapshot and holds major changes',()=>{const p=buildPublicationIntent(input);if(!p)throw Error("Expected intent");expect(p.target.revision).toBe(2);expect(p.target.notes[0].id).toBe('n');expect(p.review.items).toHaveLength(1);expect(home.revision).toBe(1);expect(p.target.rooms).toEqual([]);expect(buildPublicationIntent({...input,rows:[]})).toBeNull();});
+test('current authenticated publication preserves original and exact replay never writes twice',async()=>{const p=buildPublicationIntent(input);if(!p)throw Error("Expected intent");const t=transport();const result=await executePublication(p,t);expect(result.confirmed).toBe(true);expect(t.writes).toHaveLength(2);expect((await executePublication(p,t)).reused).toBe(true);expect(t.writes).toHaveLength(2);});
+test('changed baseline or intake and changed principal reject before writing',async()=>{const p=buildPublicationIntent(input);if(!p)throw Error("Expected intent");for(const current of [{...input,home:{...home,revision:3}},{...input,rows:[...input.rows,{...note,id:'new'}]},{...input,principalId:'other'}]){const t=transport();t.set(current);await expect(executePublication(p,t)).rejects.toThrow();expect(t.writes).toHaveLength(0);}});
+test('uncertain upload resolves by readback and differing remote state is never overwritten on retry',async()=>{const p=buildPublicationIntent(input);if(!p)throw Error("Expected intent");const t=transport();const write=t.write;t.write=async(path,value)=>{await write(path,value);if(path.endsWith('/home.json'))throw Error('Response lost');};expect((await executePublication(p,t)).confirmed).toBe(true);expect(t.writes).toHaveLength(2);t.set({...input,home:{...home,revision:9}});await expect(executePublication(p,t)).rejects.toThrow();expect(t.writes).toHaveLength(2);});
+test('tampered candidate cannot become an authenticated publication',async()=>{const p=buildPublicationIntent(input);if(!p)throw Error("Expected intent");const t=transport();await expect(executePublication({...p,target:{...p.target,name:'Forged'}},t)).rejects.toThrow();expect(t.writes).toHaveLength(0);});
+
+test('transport upload boundary recheck prevents writes after signed upload preparation drift',async()=>{
+ const p=buildPublicationIntent(input);if(!p)throw Error('Expected intent');const t=transport();const write=t.write;
+ t.write=async(path,value,guard)=>{if(path.endsWith('/home.json')){t.set({...input,home:{...home,revision:9}});if(guard)await guard();}return write(path,value);};
+ await expect(executePublication(p,t)).rejects.toThrow();expect(t.writes.filter(path=>path.endsWith('/home.json'))).toHaveLength(0);
+});

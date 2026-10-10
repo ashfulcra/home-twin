@@ -3,12 +3,26 @@ import {createHash} from 'node:crypto';
 import {ingestHome} from '../src/lib/home/ingestion.js';
 /** Tokens remain in memory; no whole-user-info response is printed or persisted.
  * @param {string} homeId @param {{root?:string}} options */
-export async function syncHome(homeId,options={}){
+export async function syncHome(homeId,options={}){return createMaintainerClient(homeId,options).read();}
+/** @param {string} homeId @param {{root?:string}} options */
+export function createMaintainerClient(homeId,options={}){
  if(!/^[a-z0-9][a-z0-9-]{0,79}$/.test(homeId))throw new Error('Invalid home ID');
  const endpoint='https://api.fulcradynamics.com/';
  const token=execFileSync('fulcra',['auth','print-access-token'],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
  async function get(/** @type {string} */ path){const r=await fetch(endpoint+path,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(15000)});if(!r.ok)throw new Error(`Fulcra read status ${r.status}`);return r;}
- return readMaintainerHome(homeId,options.root??`/shared/home-twin/${homeId}`,get);
+ const root=options.root??`/shared/home-twin/${homeId}`;
+ if(!['/home/twin',`/shared/home-twin/${homeId}`].includes(root))throw Error('Invalid home root');
+ return {read:()=>readMaintainerHome(homeId,root,get),
+  readSnapshot:async (/** @type {string} */ path)=>{if(!path.startsWith(root+'/history/'))throw Error('Only intended home history may be inspected');const split=path.lastIndexOf('/');const listing=await(await get(`input/v1/file_upload?path=${encodeURIComponent(path.slice(0,split))}`)).json();const file=listing.files?.find((/** @type {any} */ f)=>f.name===path.slice(split+1));return file?await(await get(`input/v1/file_upload/${encodeURIComponent(file.id)}/download`)).json():null;},
+  write:async (/** @type {string} */ path,/** @type {any} */ value,/** @type {(()=>Promise<void>)|undefined} */ beforeCommit=undefined)=>{
+   if(path!==root+'/home.json'&&!new RegExp('^'+root+'/history/[a-f0-9]{64}\\.json$').test(path))throw Error('Only intended home snapshot/history may be written');
+   const split=path.lastIndexOf('/');const bytes=new TextEncoder().encode(JSON.stringify(value));
+   const r=await fetch(endpoint+'input/v1/file_upload',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({path:path.slice(0,split),name:path.slice(split+1),content_type:'application/json',content_length:bytes.byteLength}),signal:AbortSignal.timeout(15000)});
+   if(!r.ok)throw Error(`Fulcra upload preparation status ${r.status}`);const upload=await r.json();
+   const url=new URL(upload.url);if(url.protocol!=='https:')throw Error('Invalid secure upload URL');
+   if(beforeCommit)await beforeCommit();
+   const sent=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','Content-Length':String(bytes.byteLength)},body:bytes,signal:AbortSignal.timeout(15000)});if(!sent.ok)throw Error(`Fulcra upload status ${sent.status}`);
+  }};
 }
 /** Read only the intended home through current caller permissions.
  * @param {string} homeId @param {string} root @param {(path:string)=>Promise<Response>} get */
@@ -36,5 +50,7 @@ export async function readMaintainerHome(homeId,root,get){
  if(home.ownerUserId!==userId)throw Error('Only the authenticated home maintainer can ingest household contributions');
  receipts.push({sourceUserId:userId,fileId:file.id,path:`${root}/home.json`,sha256:createHash('sha256').update(body).digest('hex')});
  const ingested=await ingestHome(home,userId,async account=>(await readFolder(`${root}/contributions`,account)).map(row=>row.value));
+ const latest=await(await get(`input/v1/file_upload?path=${encodeURIComponent(root)}`)).json();const current=latest.files?.find((/** @type {any} */ f)=>f.name==='home.json');
+ if(!current||current.id!==file.id||(await(await get(`input/v1/file_upload/${encodeURIComponent(current.id)}/download`)).text())!==body)throw Error('Baseline changed during intake; retry with fresh state');
  return {home,principalId:userId,root,...ingested,receipts,ingestedAt:new Date().toISOString(),baselineVersion:file.id};
 }

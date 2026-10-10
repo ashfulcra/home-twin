@@ -19,6 +19,8 @@ export function reconcileContributions(baseline, contributions) {
  }
  /** @type {string[]} */ const resolved=[];
  const unresolved=[...unique.values()].filter(c=>{
+  const evidence=home.contributionEvidence.filter((/** @type {any} */ e)=>e.id===c.id);
+  if(evidence.length){if(collisions.has(c.id)||evidence.length!==1||canonicalJSON(evidence[0])!==canonicalJSON(c))review.push({contribution:c,reason:'accepted-id-collision'});else resolved.push(c.id);return false;}
   const decisions=(home.reviewDecisions??[]).filter((/** @type {any} */ d)=>d.contributionId===c.id);
   if(!decisions.length)return true;
   if(collisions.has(c.id)||decisions.length!==1||!['reject','accept-fact'].includes(decisions[0].action)||canonicalJSON(decisions[0].contribution)!==canonicalJSON(c)){review.push({contribution:c,reason:'review-decision-mismatch'});return false;}

@@ -50,3 +50,10 @@ it('holds forged future maintenance and ignores untrusted competing facts',()=>{
  const result=reconcileContributions(baseline,[{id:'future',homeId:'h',kind:'maintenance',authorUserId:'a',entityId:'e',performedAt:'2099-01-01',recordedAt:'2099-01-02'},{id:'good',homeId:'h',kind:'fact',authorUserId:'a',entityId:'e',field:'serial',value:'123'},{id:'forged',homeId:'h',kind:'fact',authorUserId:null,entityId:'e',field:'serial',value:'456'}]);
  expect(result.home.history).toHaveLength(0);expect(result.home.equipment[0].serial).toBe('123');
 });
+
+it('holds reused accepted IDs with changed payload and resolves exact immutable replays',()=>{
+ const h={id:'h',revision:1,equipment:[{id:'e'}]};const original={id:'same',homeId:'h',kind:'fact',authorUserId:'a',entityId:'e',field:'model',value:'Model A',baseRevision:1};
+ const accepted=reconcileContributions(h,[original]).home;accepted.revision=2;
+ const changed=reconcileContributions(accepted,[{...original,field:'manufacturer',value:'Vendor B',baseRevision:2}]);expect(changed.home.equipment[0].manufacturer).toBeUndefined();expect(changed.review[0].reason).toBe('accepted-id-collision');expect(changed.home.contributionEvidence).toEqual([original]);
+ const replay=reconcileContributions(accepted,[original]);expect(replay.review).toEqual([]);expect(replay.accepted).toEqual([]);expect(replay.resolved).toEqual(['same']);
+});

@@ -49,7 +49,7 @@ test('foreign sources require registered contributor and home-scoped derived pat
 test('accepted evidence cannot be replaced through a reused contribution identity',async()=>{
  const io=storage();await saveEvidence(access,input,bytes,'text/plain','invoice.txt',io);const c=(await io.list())[0];const baseline=reconcileContributions(access.home,[c]).home;
  const altered={...c,value:'Different title',attachment:{...c.attachment,sha256:'b'.repeat(64)}};
- const replay=reconcileContributions(baseline,[altered]);expect(replay.review[0]?.reason).toBe('source-id-collision');expect(replay.home.sources[0].attachment.sha256).toBe(c.attachment.sha256);
+ const replay=reconcileContributions(baseline,[altered]);expect(replay.review[0]?.reason).toBe('accepted-id-collision');expect(replay.home.sources[0].attachment.sha256).toBe(c.attachment.sha256);
 });
 import {readBoundedBytes} from './fulcra-files.js';
 test('streamed sources enforce limits without trusting a missing or false length header',async()=>{
