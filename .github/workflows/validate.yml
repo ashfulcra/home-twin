@@ -16,6 +16,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Configure public build defaults
+        run: cp .env.example .env
       - run: npm test
       - run: npm run check
       - run: npm run build
