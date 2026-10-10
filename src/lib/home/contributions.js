@@ -1,3 +1,4 @@
+import {validAttachment} from './attachments.js';
 import {validRecurrence,validCompletionOccurrence} from './recurrence.js';
 import {canonicalJSON} from './canonical-json.js';
 /** Immutable contributions are reconciled against a baseline; conflicting new
@@ -35,7 +36,15 @@ export function reconcileContributions(baseline, contributions) {
   if(c.contactId&&!home.contacts.some((/** @type {any} */ contact)=>contact.id===c.contactId)){hold(c,'unknown-contact');continue;}
   if(c.kind==='fact'&&c.baseRevision!==undefined&&c.baseRevision!==home.revision){hold(c,'stale-base-revision');continue;}
   if(c.kind==='geometry'){hold(c,'major-model-change');continue;}
-  if(c.kind==='note'){
+  if(c.kind==='evidence-upload'){hold(c,'source-upload-pending');continue;}
+  if(c.kind==='evidence'){
+   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.id)||!validAttachment(c.attachment)||typeof c.value!=='string'||!c.value.trim()||c.value.length>500||!Number.isFinite(Date.parse(c.recordedAt))||Date.parse(c.recordedAt)>Date.now()){hold(c,'invalid-source-evidence');continue;}
+   const sourceId=`evidence-${c.id}`;home.sources??=[];
+   const previous=home.sources.find((/** @type {any} */ source)=>source.id===sourceId);
+   if(previous&&(canonicalJSON(previous.attachment)!==canonicalJSON(c.attachment)||previous.title!==c.value||previous.authorUserId!==c.authorUserId||previous.equipmentId!==(c.entityId??null))){hold(c,'source-id-collision');continue;}
+   if(!home.sources.some((/** @type {any} */ source)=>source.id===sourceId))home.sources.push({id:sourceId,title:c.value,attachment:{...c.attachment},contributionId:c.id,sourceUserId:c.sourceUserId??c.authorUserId,authorUserId:c.authorUserId,recordedAt:c.recordedAt,verifiedAt:null,equipmentId:c.entityId??null});
+   if(entity){entity.sourceIds??=[];if(!entity.sourceIds.includes(sourceId))entity.sourceIds.push(sourceId);}
+  }else if(c.kind==='note'){
    if(typeof c.text!=='string'||!c.text.trim()){hold(c,'empty-note');continue;}
    if(!home.notes.some((/** @type {any} */ n)=>n.id===c.id))home.notes.push({...c});
   }else if(c.kind==='fact'){

@@ -2,7 +2,7 @@
 
 A Fulcra-authenticated home dashboard and agent workflow for reducing the work of owning a home. Start with equipment, contacts and care history, then refine a correctable floor plan. Exact dimensions are optional. All examples in this repository are synthetic. GitHub validation runs the locked install, tests, type checks and build without private credentials.
 
-The UI supports guided setup, source-linked equipment and schedules, household contributions, conflict review, and an optional request for a connected home agent. A saved request does not launch an agent. Advanced chat and local captures/device integrations are separate add-ons.
+The UI supports private [source-file intake](docs/source-intake.md), guided setup, source-linked equipment and schedules, household contributions, conflict review, and an optional request for a connected home agent. A saved request does not launch an agent. Advanced chat and local captures/device integrations are separate add-ons.
 
 ## Run locally
 

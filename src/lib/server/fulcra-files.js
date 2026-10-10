@@ -32,3 +32,25 @@ export async function writeFulcraJSON(endpoint,token,path,value) {
  if(!response.ok)throw new Error(`Fulcra upload status ${response.status}`);
  return upload;
 }
+
+/** Stream limits apply even without Content-Length. @param {Response|Request} response @param {number} max */
+export async function readBoundedBytes(response,max){
+ if(Number(response.headers.get('content-length')??0)>max)throw new Error('Source exceeds the upload limit');
+ if(!response.body)return new Uint8Array();const reader=response.body.getReader();const chunks=[];let size=0;
+ try{while(true){const part=await reader.read();if(part.done)break;size+=part.value.byteLength;if(size>max){await reader.cancel();throw new Error('Source exceeds the upload limit');}chunks.push(part.value);}}finally{reader.releaseLock();}
+ const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}return bytes;
+}
+/** @param {string} endpoint @param {string} token @param {string} path @param {number} max @param {string} [userId] */
+export async function readFulcraBytes(endpoint,token,path,max,userId){
+ const split=path.lastIndexOf('/');const api=new FulcraAPI(endpoint,token);
+ const listing=await api.get(`input/v1/file_upload?path=${encodeURIComponent(path.slice(0,split))}${userId?`&fulcra_userid=${encodeURIComponent(userId)}`:''}`);
+ const file=listing.files?.find((/** @type {any} */ f)=>f.name===path.slice(split+1));if(!file)return null;
+ const r=await fetch(`${endpoint}input/v1/file_upload/${file.id}/download${userId?`?fulcra_userid=${encodeURIComponent(userId)}`:''}`,{headers:{Authorization:`Bearer ${token}`}});if(!r.ok)throw new Error(`Fulcra source status ${r.status}`);
+ return readBoundedBytes(r,max);
+}
+/** @param {string} endpoint @param {string} token @param {string} path @param {Uint8Array} bytes @param {string} contentType */
+export async function writeFulcraBytes(endpoint,token,path,bytes,contentType){
+ const split=path.lastIndexOf('/');const api=new FulcraAPI(endpoint,token);
+ const upload=await api.post('input/v1/file_upload',{path:path.slice(0,split),name:path.slice(split+1),content_type:contentType,content_length:bytes.byteLength});
+ const r=await fetch(upload.url,{method:'POST',headers:{'Content-Type':contentType,'Content-Length':String(bytes.byteLength)},body:new Uint8Array(bytes)});if(!r.ok)throw new Error(`Fulcra source upload status ${r.status}`);
+}

@@ -1,4 +1,5 @@
 <script lang="ts">
+ import HomeSourceUpload from './HomeSourceUpload.svelte';
  import HomeFeeds from './HomeFeeds.svelte';
  import HomeLayout from './HomeLayout.svelte';
  import HomeCare from './HomeCare.svelte';
@@ -76,7 +77,7 @@
   {:else if section==='Household'}
    <section><h2>Your household</h2><p><a href="/onboarding">Set up another home</a></p><p>Your role: {role}</p><p>Home ID: {home.id}</p><a href="/api/home/agent-request">Download private agent brief</a><p class="muted">Give this brief to your agent connected to the intended Fulcra account. It contains known records and targeted questions; it grants no access and does not launch an agent.</p><button onclick={requestAgent}>Save request for a home agent</button><p role="status">{agentStatus}</p><button onclick={ownHome}>Open my original home record</button><p>The home maintainer reviews conflicting facts and layout changes. Each contributor keeps their own originals in Fulcra and shares only this home’s contributions.</p><p>Changing a share in Fulcra changes future access. Previously viewed or downloaded information cannot be recalled.</p><SharedHomeConnect onconnected={load} /></section>
   {:else if section==='Sources'}
-   <section><h2>Your home knowledge</h2><p class="muted">“Recent” means the source reports verification within 30 days. Importing an old document doesn’t verify its contents.</p>{#each home.sources as source}<article><h3>{source.title}</h3><p>{source.path}</p><p>Verified: {source.verifiedAt??'Not recorded'} · {source.freshness}</p><a href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">Read original source ↗</a></article>{/each}</section>
+   <HomeSourceUpload {home} {role} onchanged={load} /><section><h2>Your home knowledge</h2><p class="muted">“Recent” means the source reports verification within 30 days. Importing an old document doesn’t verify its contents.</p>{#each home.sources as source}<article><h3>{source.title}</h3><p>{source.attachment?.originalName??source.path??'Original source'}</p>{#if source.attachment}<p class="muted">Original: {source.attachment.mimeType} · {source.attachment.sizeBytes} bytes · saved {source.recordedAt} · contributor {source.authorUserId}</p>{/if}<p>Verified: {source.verifiedAt??'Not recorded'} · {source.freshness}</p><a href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">{source.attachment?'Download original source':'Read original source'} ↗</a></article>{/each}</section>
   {/if}
  {/if}
 </main>
