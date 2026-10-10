@@ -65,3 +65,11 @@ New homes use `/shared/home-twin/<home-id>/`; this path is private until explici
 Keep household exports, photos/scans, account IDs, credentials, private runtime logs and deployment evidence outside the repository. Do not turn a real home into a public demo. Use synthetic fixtures and environment configuration. The optional local agent should retain originals in Fulcra and keep device credentials server-side.
 
 Based on the official Fulcra Svelte app template, including its Auth0 device flow and owner harness patterns. Fulcra brand assets remain associated with Fulcra; this repository does not grant rights beyond their original terms.
+
+### Repeatable maintainer intake
+
+Run `node scripts/home-maintainer.mjs cycle HOME_ID PRIVATE_STATE_DIR` from the full repository, using the intended signed-in Fulcra CLI account. The state directory must be outside this public repository and private to its owner. For an explicitly migrated legacy home, add `--legacy-root` to read `/home/twin`; otherwise the runtime reads `/shared/home-twin/HOME_ID`.
+
+The cycle checks the current authenticated owner and named home before collecting registered contributions. It preserves immutable private reports, a current checkpoint, review items, unavailable-account blockers and targeted capture questions. Unchanged inputs produce no output. It performs no remote writes and does not install a watcher, launch an agent, grant access or send reminders. The connected agent calls it on each wake and continues useful unblocked work beyond the registered queue.
+
+Process restart recovery preserves reports written before checkpoint interruption. A crashed writer may leave `.cycle.lock`; inspect whether the previous process is still running before removing an abandoned lock, then rerun the same command. Preserve reports and temporary files during inspection. Never clear a live lock or steal it after a timeout. Atomic publication is not a guarantee against disk failure or power loss.
