@@ -6,8 +6,10 @@
  import HomeCare from './HomeCare.svelte';
  import SharedHomeConnect from './SharedHomeConnect.svelte';
  import HomeAgentStart from './HomeAgentStart.svelte';
+ import HomeJoin from './HomeJoin.svelte';
  import { onMount } from 'svelte';
  let home: any = $state(null);let firstLoad=true;
+ let deployment:any=$state(null);let join:any=$state(null);
  function correctRoom(room:any){section='Contributions';if(pending||saving){saveMessage='Finish confirming the pending contribution before starting a room correction.';return;}kind='geometry';entityId='';text=`Room: ${room.name} (${room.level}; model ID ${room.id})\n${room.sourcePage?'Drawing '+room.sourceSheet+', page '+room.sourcePage+'\n':''}Correction: `;saveMessage='Describe what should change. Your correction is saved for the home maintainer to reconcile.';}
  let loadState = $state('loading');
  let errorMessage = $state('');
@@ -35,7 +37,7 @@
   try {
    const response=await fetch('/api/home');
    if(!response.ok)throw new Error(response.status===401?'Please sign in again.':'Your home data is temporarily unavailable.');
-   const data=await response.json();home=data.home;if(sourceRequest&&(sourceRequest.homeId!==home?.id||sourceRequest.revision!==home?.revision))sourceRequest=null;followups=data.followups;role=data.role??'maintainer';review=data.review??[];reviewContext=data.reviewContext??[];loadState=data.status;if(firstLoad&&home?.reconstruction?.buildingModel)section='Layout';firstLoad=false;
+   const data=await response.json();deployment=data.deployment??null;join=data.join??null;home=data.home;if(sourceRequest&&(sourceRequest.homeId!==home?.id||sourceRequest.revision!==home?.revision))sourceRequest=null;followups=data.followups;role=data.role??'maintainer';review=data.review??[];reviewContext=data.reviewContext??[];loadState=data.status;if(firstLoad&&home?.reconstruction?.buildingModel)section='Layout';firstLoad=false;
   }catch(e){loadState='error';errorMessage=e instanceof Error?e.message:String(e);}
  }
  onMount(load);
@@ -46,6 +48,8 @@
   <p>Loading your home…</p>
  {:else if loadState==='error'}
   <h1>We couldn’t load your home</h1><p>{errorMessage} Your saved records are unchanged.</p><button onclick={load}>Try again</button>
+ {:else if loadState==='joining'&&deployment}
+  <HomeJoin {deployment} {join} onrefresh={load} />
  {:else if loadState==='empty'}
   <h1>Start with what you know</h1><p>Your home doesn’t need a perfect floor plan. Equipment, contacts and maintenance records can come first.</p><a href="/onboarding">Start guided home setup →</a><SharedHomeConnect onconnected={load} />
  {:else if home}
@@ -86,7 +90,7 @@
    <section><h2>Needs review ({review.length})</h2><p><a href="/api/home/review">Download private review packet</a></p>{#if !review.length}<p>No contributions waiting for review.</p>{/if}{#each reviewContext as item}<article><p class="eyebrow">{item.reason}</p><h3>{item.entity?.name??'Home contribution'}{item.field?' · '+item.field:''}</h3>{#if item.kind==='fact'}<dl><dt>Accepted value</dt><dd>{item.priorValue??'Not recorded or unsupported'}</dd><dt>Proposed value</dt><dd>{item.proposedValue??'Not a supported text value'}</dd></dl>{:else}<p>{item.description??item.proposedValue??'Original needs inspection'}</p>{/if}{#if item.descriptionTruncated}<p class="muted">Description shortened; read the original contribution.</p>{/if}<p class="muted">Contributor: {item.authorUserId??'Not authenticated'} · {item.recordedAt??'Time not recorded'}</p><p class="muted">Contribution {item.contributionId??'Missing ID'} · submitted revision {item.baseRevision??'Not recorded'} · current revision {item.currentRevision}</p>{#if item.sources.length}<p>Accepted record sources — inspect before deciding:</p>{#each item.sources as source}<a class="source-link" href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">{source.title??source.id} · verified {source.verifiedAt??'Not recorded'}</a>{/each}{:else}<p class="muted">No linked accepted-record evidence; ask for the original source.</p>{/if}</article>{/each}<p class="muted">The maintainer reviews original evidence before changing the accepted record. This packet grants no authority and does not accept or reject anything.</p></section>
   {:else if section==='Household'}
    {#key home.id+":"+home.revision+":"+role}<HomeAgentStart homeId={home.id} {role} />{/key}
-   <section><h2>Your household</h2><p><a href="/onboarding">Set up another home</a></p><p>Your role: {role}</p><p>Home ID: {home.id}</p><a href="/api/home/agent-request">Download private agent brief</a><p class="muted">Give this brief to your agent connected to the intended Fulcra account. It contains known records, any available home model with source notes and estimates, and targeted questions. It grants no access and does not launch an agent.</p><button onclick={requestAgent}>Save request for a home agent</button><p role="status">{agentStatus}</p><button onclick={ownHome}>Open my original home record</button><p>The home maintainer reviews conflicting facts and layout changes. Each contributor keeps their own originals in Fulcra and shares only this home’s contributions.</p><p>Changing a share in Fulcra changes future access. Previously viewed or downloaded information cannot be recalled.</p><SharedHomeConnect onconnected={load} /></section>
+   <section><h2>Your household</h2>{#if !deployment}<p><a href="/onboarding">Set up another home</a></p>{/if}<p>Your role: {role}</p><p>Home ID: {home.id}</p><a href="/api/home/agent-request">Download private agent brief</a><p class="muted">Give this brief to your agent connected to the intended Fulcra account. It contains known records, any available home model with source notes and estimates, and targeted questions. It grants no access and does not launch an agent.</p><button onclick={requestAgent}>Save request for a home agent</button><p role="status">{agentStatus}</p>{#if !deployment}<button onclick={ownHome}>Open my original home record</button>{/if}<p>The home maintainer reviews conflicting facts and layout changes. Each contributor keeps their own originals in Fulcra and shares only this home’s contributions.</p><p>Changing a share in Fulcra changes future access. Previously viewed or downloaded information cannot be recalled.</p>{#if !deployment}<SharedHomeConnect onconnected={load} />{/if}</section>
   {:else if section==='Sources'}
    {#key sourceRequest?.key??'sources'}<HomeSourceUpload {home} {role} prefill={sourceRequest} onchanged={load} />{/key}<section><h2>Your home knowledge</h2><p class="muted">“Recent” means the source reports verification within 30 days. Importing an old document doesn’t verify its contents.</p>{#each home.sources as source}<article><h3>{source.title}</h3><p>{source.attachment?.originalName??source.path??'Original source'}</p>{#if source.attachment}<p class="muted">Original: {source.attachment.mimeType} · {source.attachment.sizeBytes} bytes · saved {source.recordedAt} · contributor {source.authorUserId}</p>{/if}<p>Verified: {source.verifiedAt??'Not recorded'} · {source.freshness}</p><a href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">{source.attachment?'Download original source':'Read original source'} ↗</a></article>{/each}</section>
   {/if}

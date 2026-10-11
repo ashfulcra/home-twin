@@ -5,8 +5,10 @@ import {createHash} from 'node:crypto';
 import {FulcraAPI} from '$lib/api-client.js';
 import {createHomeFromAnswers} from '$lib/home/onboarding.js';
 import {readFulcraFile,writeFulcraJSON} from '$lib/server/fulcra-files.js';
+import {existingHomeDeployment} from '$lib/home/deployment.js';
 export async function POST({cookies,request}) {
  const token=cookies.get('fulcra_access_token');if(!token)throw error(401,'Sign in first');
+ if(existingHomeDeployment({...publicEnv,...env}))throw error(403,'This app belongs to an existing home. Return to its home page for joining instructions.');
  let answers;try{const text=await request.text();if(text.length>30000)throw new Error();answers=JSON.parse(text);}catch{throw error(400,'Invalid setup answers');}
  const endpoint=publicEnv.PUBLIC_FULCRA_API_ENDPOINT;const api=new FulcraAPI(endpoint,token);const principal=await api.get('user/v1alpha1/info');
  /** @type {any} */ let home;try{home=createHomeFromAnswers(answers,principal.userid,new Date().toISOString());}catch(e){throw error(400,e instanceof Error?e.message:'Invalid setup answers');}

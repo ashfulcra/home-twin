@@ -19,7 +19,17 @@ After contributor approval and a successful shared-home read, Household provides
 
 Home access, contribution sharing and agent pairing are separate states. The prompt is instructions, not a grant or proof of connection. The member consents to their own contribution/outbox shares; the owner consents to their home/return-outbox shares. A mesh message cannot grant membership or rewrite an accepted home. Use confirmed incoming share account IDs, exact message readback and a return acknowledgment before reporting pairing complete. Viewer prompts do not offer contribution pairing. See [agent handoff](agent-handoff.md) and the official [mesh skill](https://raw.githubusercontent.com/fulcradynamics/agent-skills/main/skills/fulcra-mesh/SKILL.md).
 
-The current manual shared-home connection is a pilot. An existing-home deployment's join-request/admin-approval flow is a separate product requirement: sign-in or signup must join that named home, never silently provision another one. A prospective member needs join instructions before approval and the verified contribution prompt after approval. Do not describe that approval screen as available until implemented and tested.
+The current manual shared-home connection is a pilot. Named deployments now provide joining instructions before approval and the verified role-specific prompt after approval. An automatic join-request/admin-approval screen remains a separate requirement; the joining page explicitly says it has not sent a request.
+
+## Named existing-home deployments
+
+Set private `HOME_MODE=existing`, `HOME_ID` and `HOME_OWNER_USER_ID`, plus `PUBLIC_APP_NAME` for the display label. Partial or invalid target configuration fails closed. `HOME_ROOT` remains the owner's canonical private root. Keep these values in private deployment settings, not public fixtures. Transfer requires a deliberate configuration/publication change; an app user cannot select another owner.
+
+The owner reads the configured canonical record. Other signed-in users read only `/shared/home-twin/<home-id>/home.json` from that configured owner using their own token. Both current membership and Fulcra access are checked on each request. Missing/revoked access or a mismatched record displays joining instructions with no home snapshot. Other remote failures remain errors. Sign-in/account creation alone confers no membership.
+
+New-home setup is denied; `/onboarding` returns to the home page. Foreign home connections and a member's own-home connection are denied. The existing-home dashboard omits new-home setup and manual foreign-home selection. Deployments without these target settings retain the generic starter's creation/connection flow.
+
+The applicant prompt identifies the configured home and owner and the authenticated requester. It asks the agent to verify the requester's own Fulcra login, prepare an access request to pass to the owner, then re-check approval. It grants nothing and sends nothing. Contributors authorize their own return contribution/evidence shares separately from the owner's home share; optional per-peer mesh pairing follows contributor approval and requires separate consent and acknowledged delivery. The owner must publish a deliberately scoped household record/evidence before granting access; this deployment mode never automatically copies, shares or migrates a private vault.
 
 ## Revocation and recovery
 

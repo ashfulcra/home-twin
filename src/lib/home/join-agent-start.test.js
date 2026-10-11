@@ -1,0 +1,7 @@
+import {test,expect} from 'vitest';
+import {buildJoinAgentStart} from './join-agent-start.js';
+const deployment={mode:'existing',homeId:'example-home',name:'Example Home',ownerUserId:'11111111-1111-4111-8111-111111111111',sharedRoot:'/shared/home-twin/example-home'};
+const userId='22222222-2222-4222-8222-222222222222';
+test('applicant prompt identifies existing home and separate permissions without inventing access',()=>{const result=buildJoinAgentStart(deployment,userId);if(!result)throw new Error('Expected applicant prompt');expect(result.context).toEqual({homeId:'example-home',homeName:'Example Home',ownerUserId:deployment.ownerUserId,userId,sharedRoot:deployment.sharedRoot});expect(result.approvalStatus).toBe('not-verified');expect(result.connectionStatus).toBe('not-verified');expect(result.prompt).toContain('Do not create');expect(result.prompt).toContain('MY account');expect(result.prompt).toContain('read-only');expect(result.prompt).toContain('mesh');expect(result.prompt).toContain('GitHub');expect(result.context).not.toHaveProperty('role');});
+test.each(['invalid',undefined,{},deployment.ownerUserId])('invalid or owner requester cannot get applicant instructions: %j',id=>expect(buildJoinAgentStart(deployment,id)).toBeNull());
+test('malformed target cannot issue instructions',()=>expect(buildJoinAgentStart({...deployment,sharedRoot:'/private/other'},userId)).toBeNull());
