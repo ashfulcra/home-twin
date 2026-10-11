@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
-import {parseJoinCode,validateSharedJoinRequest,joinIntentID,buildJoinReview} from '$lib/home/joining.js';
-import {canonicalJSON} from '$lib/home/canonical-json.js';
+import {parseJoinCode,validateSharedJoinRequest,joinIntentID,buildJoinReview} from '../home/joining.js';
+import {canonicalJSON} from '../home/canonical-json.js';
 const uuid='[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}',sha='[a-f0-9]{64}';
 const uuidRE=new RegExp('^'+uuid+'$'),decisionName=new RegExp('^('+uuid+')-('+sha+')\\.json$');
 const digest=(/** @type {string|Uint8Array} */bytes)=>createHash('sha256').update(bytes).digest('hex');

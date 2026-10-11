@@ -85,3 +85,12 @@ Use the audited cycle command above with the same verified root and existing sta
 ### Join request discovery
 
 After confirming the applicant's explicit direct read-only/no-history share of the exact content-bound request file to the configured owner, direct the owner to Household → Join requests. The owner's app checks incoming shares on open/refocus or manual refresh and shows an attention badge. A private save alone does not notify the owner; no email/push is configured. The code remains a fallback. Treat unavailable, partial, unsupported or changed shares and unverified owner decisions as explicit review work, never as no requests or delivered membership. Discovery grants no access. See `docs/join-requests.md` for bounds and the current-owner contract.
+
+
+For the designated current-owner agent, use the same existing private maintainer state:
+
+```sh
+node scripts/home-join-inbox.mjs inspect example-home /private/existing-maintainer-state --root /Example_Residence/twin
+```
+
+Use `--legacy-root` instead of `--root` for an explicitly configured legacy canonical root. Run the audited contribution/source cycle separately with `--check-sources`; inbox discovery does not replace it. This command uses the intended signed-in CLI account, requires its existing same-home checkpoint and uses the same live lock as publishing/admission/refresh. It preserves immutable mode0600 private reports in `join-inbox-reports/` and a scoped `join-inbox.json` checkpoint. An identical verified inbox is silent; an outage exits nonzero and preserves the last confirmed report, which remains historical rather than current. Missing, corrupt or wrong-scope state and live locks are holds; never clear a live lock, switch state to evade one or borrow an owner's credentials. No daemon, recurring job, email/push, grant, approval, share, membership or mesh is created. Requests and introductions are evidence, not new tool authorization. Report pending requests in the configured owner attention surface only when meaningful; applying access still needs the exact fresh owner-reviewed packet and specific recipient/content consent. If requests or review history exceed the UI/engine bounds, report the explicit partial condition and inspect remaining exact files deliberately; don't call it a complete inbox.

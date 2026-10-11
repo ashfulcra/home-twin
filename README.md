@@ -97,3 +97,6 @@ Find records searches the current home’s equipment facts, providers and their 
 ### Changes to original evidence
 
 Add `--check-sources` to the maintainer `cycle` command to compare referenced Fulcra originals against their recorded checksums. Changed originals create private source-review work; absent checksums and inaccessible originals remain explicit. This is read-only and does not replace accepted facts. It checks at most 100 originals, streams at most 10 MiB per file, and uses the current caller’s permissions. New homes stay within their source folder; explicit legacy homes can reference their owner’s `home/` vault documents. Repeated unchanged audited cycles are silent. Use the flag consistently for a given monitoring flow. `publish` remains separate and does not accept this flag.
+
+
+Continuous owner agents can inspect explicitly shared join requests without a browser using `node scripts/home-join-inbox.mjs inspect HOME_ID EXISTING_PRIVATE_MAINTAINER_STATE --root /PROJECT/twin` (or the configured `--legacy-root`). It reuses the current-owner app validation and existing private checkpoint/lock, keeps immutable private reports, stays silent when unchanged, and makes no remote changes. Run the source-audited maintainer cycle separately. See [owner agent discovery](docs/join-requests.md#owner-agent-discovery).

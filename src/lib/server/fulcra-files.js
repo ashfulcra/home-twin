@@ -1,4 +1,4 @@
-import { FulcraAPI } from '$lib/api-client.js';
+import { FulcraAPI } from '../api-client.js';
 /** @param {string} endpoint @param {string} token @param {string} path @param {string} [userId] */
 export async function readFulcraFile(endpoint, token, path, userId) {
  const split=path.lastIndexOf('/');
