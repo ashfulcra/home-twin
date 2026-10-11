@@ -1,0 +1,12 @@
+import {test,expect,vi,beforeEach} from 'vitest';
+const mocks=vi.hoisted(()=>({resolve:vi.fn()}));
+vi.mock('$lib/server/home-access.js',()=>({resolveHome:mocks.resolve}));
+import {GET} from '../../routes/api/home/household-refresh/+server.js';
+const owner='11111111-1111-4111-8111-111111111111',member='22222222-2222-4222-8222-222222222222';
+const home={schemaVersion:1,id:'example',ownerUserId:owner,name:'Example',revision:6,members:[{userId:member,role:'contributor'}],privateNote:'exclude'};
+/** @type {any} */const access={deployment:{},role:'maintainer',userId:owner,ownerUserId:owner,home,root:'/Example/twin',file:{id:'version-6',text:JSON.stringify(home)}};
+/** @param {boolean} [auth] @returns {any} */const event=(auth=true)=>({cookies:{get:()=>auth?'caller-token':null}});
+beforeEach(()=>{vi.clearAllMocks();mocks.resolve.mockResolvedValue(access);});
+test('owner preparation reads caller access once and exports exact curated content privately',async()=>{const response=await GET(event());const packet=await response.json();expect(mocks.resolve).toHaveBeenCalledExactlyOnceWith('caller-token');expect(response.headers.get('cache-control')).toBe('private, no-store');expect(response.headers.get('content-disposition')).toContain('attachment');expect(packet.status).toBe('prepared-not-applied');expect(packet.baseline.fileVersion).toBe('version-6');expect(packet.publication.members).toEqual(home.members);expect(packet.publication).not.toHaveProperty('privateNote');});
+test('anonymous, generic deployment and nonowner cannot prepare a refresh',async()=>{await expect(GET(event(false))).rejects.toMatchObject({status:401});expect(mocks.resolve).not.toHaveBeenCalled();for(const patch of [{deployment:null},{role:'contributor',userId:member},{userId:member},{file:null}]){mocks.resolve.mockResolvedValue({...access,...patch});await expect(GET(event())).rejects.toMatchObject({status:403});}});
+test('no members or incoherent current baseline holds preparation',async()=>{for(const h of [{...home,members:[]},{...home,revision:7}]){mocks.resolve.mockResolvedValue({...access,home:h});await expect(GET(event())).rejects.toMatchObject({status:409});}});

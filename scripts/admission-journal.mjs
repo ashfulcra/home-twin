@@ -1,5 +1,6 @@
 import {mkdirSync,lstatSync,readFileSync,writeFileSync,renameSync,rmdirSync,openSync,fsyncSync,closeSync} from 'node:fs';import {join,dirname} from 'node:path';import {createHash,randomUUID} from 'node:crypto';
 import {canonicalJSON} from '../src/lib/home/canonical-json.js';import {buildAdmissionPacket} from '../src/lib/home/admission-packet.js';import {validHomeRoot} from '../src/lib/home/home-root.js';import {parseJoinCode,validateSharedJoinRequest,joinIntentID} from '../src/lib/home/joining.js';
+import {assertConfirmedRefresh} from './household-refresh-state.mjs';
 /** @param {any} value */const hash=value=>createHash('sha256').update(canonicalJSON(value)).digest('hex');
 /** @param {string} value */const bytesHash=value=>createHash('sha256').update(value).digest('hex');
 /** Reject untrusted paths before any source read. @param {any} packet */
@@ -28,6 +29,7 @@ export async function runAdmission(directory,packet,transport,consent){
  const save=(/** @type {string} */p,/** @type {any} */v)=>{const temp=join(directory,'.admission-'+randomUUID()+'.json');writeFileSync(temp,JSON.stringify(v,null,2),{flag:'wx',mode:0o600});const fd=openSync(temp,'r');try{fsyncSync(fd);}finally{closeSync(fd);}renameSync(temp,p);const parent=openSync(dirname(p),'r');try{fsyncSync(parent);}finally{closeSync(parent);}};
  try{
   const scope={homeId:packet.homeId,principalId:packet.ownerUserId,root:packet.baseline.root};const checkpoint=read(join(directory,'checkpoint.json'));if(!checkpoint||checkpoint.schema!=='home-twin-checkpoint/1'||Object.entries(scope).some(([k,v])=>checkpoint[k]!==v))throw Error('Existing maintainer state scope differs');
+  const refresh=read(join(directory,'household-refresh.json'));if(refresh){if(refresh.status==='pending')throw Error('Resolve pending household refresh before admission');if(!/^[a-f0-9]{64}$/.test(refresh.intentId??''))throw Error('Household refresh state unknown; preserve and inspect');assertConfirmedRefresh(refresh,read(join(directory,'household-refresh',refresh.intentId+'.json')));if(Object.entries(scope).some(([k,v])=>refresh[k]!==v))throw Error('Household refresh state scope differs');}
   const publicationState=read(join(directory,'publication.json'));if(publicationState&&(Object.entries(scope).some(([k,v])=>publicationState[k]!==v)||!['pending','confirmed'].includes(publicationState.status)||publicationState.status==='pending'))throw Error('Resolve pending publication before admission');
   const intents=join(directory,'admissions');mkdirSync(intents,{recursive:true,mode:0o700});if(!privatePath(intents).isDirectory())throw Error('Private intent directory required');
   const pointerPath=join(directory,'admission.json');let pointer=read(pointerPath);let intent;

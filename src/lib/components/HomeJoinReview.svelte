@@ -29,6 +29,9 @@
   {/if}
  {/if}
  {#if publication}<details open><summary>Exact household publication preview</summary><p>This includes the displayed contacts, equipment identifiers, notes, maintenance records and home model. Original files and private source paths are excluded. Review the text as well as the field names before approving this recipient.</p><textarea readonly rows="14" value={JSON.stringify(publication,null,2)} aria-label="Exact household publication preview"></textarea></details>{/if}
+ {#if publicationOnly&&!preview}
+  {#if publicationOnly.members?.length}<p><a href="/api/home/household-refresh">Prepare an update for your home agent</a>. Review the downloaded contents and existing household members before authorizing your agent to refresh their shared view. This preparation changes nothing.</p>{:else}<p>No household members are approved yet. Once someone joins, your home agent can prepare reviewed updates for their shared view.</p>{/if}
+ {/if}
  {#if result?.status==='saved-review-intent'&&result.review.decision==='approve'}<p><a href={'/api/home/admission-packet?decision='+encodeURIComponent(result.reviewCode)}>Download private maintainer admission packet</a>. It binds this exact review and publication; it does not grant access.</p>{/if}
  <p class="note">This records your decision. It does not publish a home, grant access, change membership, send a message or pair agents. The designated maintainer must apply and verify a scoped publication and share separately.</p>
  <p role="status">{message}</p>
