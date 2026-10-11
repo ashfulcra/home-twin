@@ -2,13 +2,21 @@
 
 The home belongs to a designated maintainer's Fulcra account. Other household members sign in using their own accounts. Shared reads always use the caller's token and Fulcra's current permissions; the app never lends the maintainer's token to a member.
 
-## Agent-assisted setup
+## Agent-assisted joining
+
+For an existing named-home app, use its **Join this home** page and copyable applicant prompt. The applicant saves an own-account request, separately consents an exact request-file share to the configured owner, and passes the code. The owner reviews recipient/role/exact household contents and records approval. The designated maintainer then uses the guarded executor in [admission packets](admission-packets.md) with specific owner authorization and the existing private state. Saved approval alone does not grant access.
+
+The owner's full canonical record remains under its configured private root; the curated household record is `/shared/home-twin/<home-id>/home.json`. Admission grants only this current file to the exact recipient. Original evidence, private journals/history and optional mesh are separate scopes. Both a current member role and a current Fulcra share are needed. Genuine member-side access/read/contribute/revoke acceptance remains a pilot prerequisite.
+
+## Generic/manual connection pilot
+
+These steps apply to the generic starter without a named target; they do not override the joining workflow above. A shared-only canonical record requires a separately reviewed preservation/migration before the guarded admission executor can be used.
 
 1. Choose a stable lower-case home ID (letters, digits, hyphens). Create the accepted record at `/shared/home-twin/<home-id>/home.json` in the maintainer's account. Include `id`, `ownerUserId`, and `members: [{userId, role}]`; supported member roles are `viewer` and `contributor`. Preserve the previous home record and original captures.
-2. Copy only the evidence the household should see into `/shared/home-twin/<home-id>/sources/`, and update the exported record's source paths. Never share `/home/`, an entire account, credentials, or unrelated vault documents to simplify setup.
-3. The maintainer explicitly shares `/shared/home-twin/<home-id>/` read-only with the chosen members through Fulcra. File history is opt-in. Membership alone does not grant a Fulcra share, and a share alone does not grant an app role.
+2. Review exactly which accepted fields the household should see before exporting. Selected original evidence requires separate owner consent and deliberate publication. Never share `/home/`, an entire account, credentials, private agent workstreams or unrelated vault documents to simplify setup.
+3. The maintainer explicitly shares only `/shared/home-twin/<home-id>/home.json` read-only/current-file-only with the chosen members through Fulcra. Evidence and file history are separate opt-ins. Membership alone does not grant a Fulcra share, and a share alone does not grant an app role.
 4. A member enters the maintainer's Fulcra user ID and home ID in the UI. The app verifies both the live shared record and membership before saving a private connection in the member's own `/home/twin/connection.json`.
-5. Contributors write only `/shared/home-twin/<home-id>/contributions/` in their OWN accounts. Each contributor explicitly shares that folder back to the maintainer. The maintainer reads only registered contributor folders, stamps their actual source account, reconciles evidence, and publishes an updated accepted record. Other members see that unified accepted record plus their own pending additions; propagation depends on the maintainer's next reconciliation.
+5. Contributors write only `/shared/home-twin/<home-id>/contributions/` in their OWN accounts. Each contributor explicitly shares that folder back to the maintainer. The maintainer reads only registered contributor folders, stamps their actual source account, reconciles evidence, and publishes an updated accepted record. With a shared-root canonical record, other members see that accepted record plus their own pending additions after publication. A private-root canonical update alone does not refresh a separate curated household file: fresh owner-reviewed household publication remains explicit pending work. Do not copy private canonical bytes into the shared file or claim propagation from canonical readback alone.
 6. A viewer can read, but cannot submit through the app. A contributor cannot rewrite the maintainer's accepted snapshot. Arbitrary paths and client claims of identity or role are ignored.
 
 Only the designated maintainer updates accepted snapshots. For an existing owner using `/home/twin/home.json`, migration is an explicit version-preserving agent operation; this feature does not automatically export or share private records.
