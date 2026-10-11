@@ -12,4 +12,22 @@ The packet is evidence for the designated maintainer, not standalone tool author
 
 Owner admission cannot grant access to the member's own return contribution folder or mesh outbox. Contributors separately consent read-only/no-history return contributions, separately intended evidence and optional per-peer mesh. Private-root maintainer intake now reads other registered contributors only at `/shared/home-twin/HOME_ID/contributions` in their own accounts, while the owner's local contribution folder remains under the owner's configured canonical root. Current caller token, role checks, source scope and final baseline coherence remain mandatory.
 
-No automatic mutation executor is enabled by these endpoints. The owner can prepare and inspect a concrete packet now; applying one waits for a real approved applicant rather than inventing recipients or performing synthetic real-account grants.
+The endpoints never apply a mutation. The designated maintainer can apply a real approved packet with the guarded local executor below. Signup, request creation and a saved decision never run it. A genuine approved applicant and specific recipient/content consent remain required; do not invent recipients or perform real-account grants from synthetic fixtures.
+
+## Applying an approved packet
+
+The canonical root must be distinct from `/shared/home-twin/HOME_ID/home.json`; legacy homes that use the shared path as their only canonical record require a separately reviewed, original-preserving migration before admission. The executor denies that alias before any mutation.
+
+Use the same private state directory as `scripts/home-maintainer.mjs`, with its existing scope checkpoint. Download the freshly prepared packet outside any repository and make its permissions private (`0600`). Verify the connected Fulcra account is the configured owner, the recipient is the intended real household member, and the exact displayed publication contents and role are approved. The agent must have the human owner's specific sharing authorization; a packet or flag is not a substitute.
+
+```sh
+node scripts/home-admission.mjs apply /private/approved-packet.json /private/existing-maintainer-state --owner-approved --recipient EXACT_FULCRA_USER_ID --publication-sha EXACT_APPROVED_SHA256
+```
+
+The executor revalidates current owner, original shared applicant request, private review, byte hashes, content-derived IDs and canonical baseline before creating an immutable private intent. It takes the same `.cycle.lock` as intake/publication; an unrelated pending publication or admission blocks execution. Do not create another state directory or clear a live lock to bypass it. Routine publication is held while an admission is pending.
+
+The intent preserves exact prior canonical and household-publication bytes. Before replacement those originals are uploaded into the owner's private history folder and read back. The canonical update preserves all owner-only fields while changing only reviewed membership/revision. The separately curated shared file contains the exact approved projection; future access to that shared path can also reveal subsequent published revisions to already authorized members. Finally a single recipient, current-file-only Fulcra share is created, with exact outgoing grant readback. Original documents, private folders/history, member return contributions and mesh are excluded. No share update/deletion or outbound messaging exists in this executor.
+
+Every operation is marked in flight and synced locally before a remote commit. On a lost response, only exact current readback permits progress. If a commit or grant remains invisible, retries with the same packet/state remain held and **never blindly repeat** that uncertain write/create. Preserve files and inspect current/previous file versions and outgoing grants. Conflicting/duplicate named shares, unknown receipt shapes, revoked grants, source changes and external baseline drift are held. Automatic lock expiry or forced fresh-recipient recovery is unsupported.
+
+`outgoing-confirmed-member-unverified` reports owner-side evidence only. Verify the real member's current read/contribute/revoke behavior in that member's own account; separately authorize their return contribution/evidence shares and optional mesh. Do not claim delivery, pairing or ACL success from the outgoing receipt. The local lock coordinates this designated maintainer, not arbitrary external writers; Fulcra file replacement has no distributed compare-and-swap, so a final check cannot remove every outside-writer race. Keep one maintainer and inspect external edits before resuming.

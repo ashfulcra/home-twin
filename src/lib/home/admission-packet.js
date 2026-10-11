@@ -5,6 +5,7 @@ import {validHomeRoot} from './home-root.js';
  * @param {any} review @param {any} request @param {any} context @param {any} publication */
 export async function buildAdmissionPacket(review,request,context,publication){
  if(review?.schema!=='home-twin-join-review/2'||review.decision!=='approve'||context.userId!==context.home?.ownerUserId||context.home.id!==context.homeId||context.home.revision!==context.homeRevision||!validHomeRoot(context.homeId,context.root))throw Error('Exact current owner approval and bounded home baseline required');
+ if(context.root+'/home.json'===review.scope.publicationPath)throw Error('A distinct private canonical root is required before household admission');
  const expected=buildJoinReview(request,review,context,review.recordedAt);if(JSON.stringify(expected)!==JSON.stringify(review)||await joinIntentID(review)!==review.id)throw Error('Review identity or current baseline changed');
  if(await joinContentDigest(JSON.stringify(request))!==review.requestDigest)throw Error('Request contents changed');
  const prepared=householdPublication(await prepareHouseholdBase(context.home),{userId:review.recipientUserId,role:review.role});

@@ -1,4 +1,5 @@
 import {mkdirSync,lstatSync,readFileSync,writeFileSync,renameSync,rmdirSync} from 'node:fs';import {join} from 'node:path';import {randomUUID} from 'node:crypto';
+import {assertConfirmedAdmissionState} from './admission-journal.mjs';
 import {buildPublicationIntent,executePublication} from './maintainer-publish.mjs';
 /** @param {string} path */
 function privatePath(path){const st=lstatSync(path);if(st.isSymbolicLink()||(st.mode&0o077))throw Error('Private publication state required');return st;}
@@ -9,7 +10,8 @@ export async function runPublication(directory,transport){
  const save=(/** @type {string} */ path,/** @type {any} */ value)=>{const tmp=join(directory,'.publication-'+randomUUID()+'.json');writeFileSync(tmp,JSON.stringify(value,null,2),{flag:'wx',mode:0o600});renameSync(tmp,path);};
  const read=(/** @type {string} */ path)=>{try{if(!privatePath(path).isFile())throw Error('State file required');return JSON.parse(readFileSync(path,'utf8'));}catch(e){if(e&&typeof e==='object'&&'code' in e&&e.code==='ENOENT')return null;throw e;}};
  try{
-  const pointerPath=join(directory,'publication.json');const pointer=read(pointerPath);const current=await transport.read();
+  const admission=read(join(directory,'admission.json'));if(admission){if(admission.status==='pending')throw Error('Resolve pending admission before routine publication');if(!/^[a-f0-9]{64}$/.test(admission.intentId??''))throw Error('Admission state unknown; preserve and inspect');assertConfirmedAdmissionState(admission,read(join(directory,'admissions',admission.intentId+'.json')));}
+  const pointerPath=join(directory,'publication.json');const pointer=read(pointerPath);const current=await transport.read();if(admission&&(admission.homeId!==current.home.id||admission.principalId!==current.principalId||admission.root!==current.root))throw Error('Admission state scope differs from current routine publication');
   if(pointer&&(pointer.homeId!==current.home.id||pointer.principalId!==current.principalId||pointer.root!==current.root||!['pending','confirmed'].includes(pointer.status)))throw Error('Publication state scope mismatch');
   const intents=join(directory,'publications');mkdirSync(intents,{recursive:true,mode:0o700});if(!privatePath(intents).isDirectory())throw Error('Intent directory required');
   let intent;

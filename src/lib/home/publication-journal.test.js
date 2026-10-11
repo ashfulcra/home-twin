@@ -1,4 +1,4 @@
-import {test,expect} from 'vitest';import {mkdtempSync,chmodSync,readdirSync,readFileSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';
+import {test,expect} from 'vitest';import {mkdtempSync,chmodSync,readdirSync,readFileSync,writeFileSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';
 import {runPublication} from '../../../scripts/publication-journal.mjs';
 const input={home:{schemaVersion:1,id:'example',revision:1,ownerUserId:'owner',equipment:[]},principalId:'owner',root:'/shared/home-twin/example',baselineVersion:'v1',rows:[{id:'n',homeId:'example',kind:'note',text:'Checked',authorUserId:'owner'}],unavailableMembers:[]};
 test('failed upload retains immutable intent; next run resolves remote success without duplicate publication',async()=>{
@@ -7,3 +7,6 @@ test('failed upload retains immutable intent; next run resolves remote success w
  await expect(runPublication(dir,t)).rejects.toThrow('Network');expect(writes).toBe(1);const intent=JSON.parse(readFileSync(join(dir,'publication.json'),'utf8'));expect(intent.status).toBe('pending');unavailable=false;
  expect((await runPublication(dir,t))?.reused).toBe(true);expect(writes).toBe(1);expect(readdirSync(join(dir,'publications'))).toHaveLength(1);expect(await runPublication(dir,t)).toBeNull();
 });
+
+test('pending admission blocks routine publication without reading or overwriting accepted home',async()=>{const dir=mkdtempSync(join(tmpdir(),'home-publish-admission-'));chmodSync(dir,0o700);writeFileSync(join(dir,'admission.json'),JSON.stringify({status:'pending'}),{mode:0o600});let reads=0;await expect(runPublication(dir,{read:async()=>{reads++;return input;}})).rejects.toThrow('pending admission');expect(reads).toBe(0);});
+test('unknown or forged confirmed admission state blocks routine publication before remote intake',async()=>{for(const status of ['unknown','confirmed']){const dir=mkdtempSync(join(tmpdir(),'home-publish-corrupt-'));chmodSync(dir,0o700);writeFileSync(join(dir,'admission.json'),JSON.stringify({status,homeId:'example',principalId:'owner',root:input.root}),{mode:0o600});let reads=0;await expect(runPublication(dir,{read:async()=>{reads++;return input;}})).rejects.toThrow('Admission');expect(reads).toBe(0);}});
