@@ -4,10 +4,13 @@ const uuid=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 /** Stable UUID derived from the normalized intent, including its declared time.
  * Full SHA-256 additionally binds the storage path and request code.
  * @param {any} value */
+export async function joinContentDigest(value){
+ const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
+}
+/** @param {any} value */
 export async function joinIntentID(value){
  const {id,...intent}=value;
- const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(intent)));
- const hex=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('').slice(0,32).split('');hex[12]='5';hex[16]=((parseInt(hex[16],16)&3)|8).toString(16);
+ const hex=(await joinContentDigest(JSON.stringify(intent))).slice(0,32).split('');hex[12]='5';hex[16]=((parseInt(hex[16],16)&3)|8).toString(16);
  const s=hex.join('');return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
 }
 /** @param {any} target */
@@ -35,8 +38,8 @@ export function validateSharedJoinRequest(value,code,target){
  * @param {any} request @param {any} input @param {any} context @param {string} recordedAt */
 export function buildJoinReview(request,input,context,recordedAt){
  const target={homeId:context?.homeId,ownerUserId:context?.ownerUserId};validateTarget(target);
- if(context.userId!==target.ownerUserId||!uuid(input?.id)||!['approve','reject'].includes(input?.decision)||(input.decision==='approve'&&!['viewer','contributor'].includes(input.role))||!Number.isInteger(context.homeRevision)||context.homeRevision<1||typeof context.homeFileVersion!=='string'||!context.homeFileVersion||context.homeFileVersion.length>200||typeof context.homeDigest!=='string'||!/^[a-f0-9]{64}$/.test(context.homeDigest)||typeof context.requestDigest!=='string'||!/^[a-f0-9]{64}$/.test(context.requestDigest)||!Number.isFinite(Date.parse(recordedAt)))throw new Error('Review requires the current owner, home baseline and exact request');
+ if(context.userId!==target.ownerUserId||!uuid(input?.id)||!['approve','reject'].includes(input?.decision)||(input.decision==='approve'&&!['viewer','contributor'].includes(input.role))||!Number.isInteger(context.homeRevision)||context.homeRevision<1||typeof context.homeFileVersion!=='string'||!context.homeFileVersion||context.homeFileVersion.length>200||typeof context.homeDigest!=='string'||!/^[a-f0-9]{64}$/.test(context.homeDigest)||typeof context.publicationDigest!=='string'||!/^[a-f0-9]{64}$/.test(context.publicationDigest)||typeof context.requestDigest!=='string'||!/^[a-f0-9]{64}$/.test(context.requestDigest)||!Number.isFinite(Date.parse(recordedAt)))throw new Error('Review requires the current owner, home baseline and exact request');
  const source=parseJoinCode(`${request.homeId}:${request.authorUserId}:${request.id}:${context.requestDigest}`,target);validateSharedJoinRequest(request,source,target);
  if(typeof recordedAt!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(recordedAt))throw new Error('Keep the same declared review time on retries');
- return {schema:'home-twin-join-review/1',id:input.id,homeId:target.homeId,ownerUserId:target.ownerUserId,authorUserId:context.userId,recipientUserId:source.userId,requestId:source.requestId,requestPath:source.path,requestDigest:context.requestDigest,homeRevision:context.homeRevision,homeFileVersion:context.homeFileVersion,homeDigest:context.homeDigest,decision:input.decision,role:input.decision==='approve'?input.role:null,scope:{publicationPath:`/shared/home-twin/${target.homeId}/home.json`,originalEvidencePaths:[],fileHistory:false},recordedAt,timeBasis:'owner-provided',status:input.decision==='approve'?'reviewed-awaiting-publication-and-share':'rejection-recorded'};
+ return {schema:'home-twin-join-review/2',id:input.id,homeId:target.homeId,ownerUserId:target.ownerUserId,authorUserId:context.userId,recipientUserId:source.userId,requestId:source.requestId,requestPath:source.path,requestDigest:context.requestDigest,homeRevision:context.homeRevision,homeFileVersion:context.homeFileVersion,homeDigest:context.homeDigest,publicationDigest:context.publicationDigest,decision:input.decision,role:input.decision==='approve'?input.role:null,scope:{publicationPath:`/shared/home-twin/${target.homeId}/home.json`,originalEvidencePaths:[],fileHistory:false},recordedAt,timeBasis:'owner-provided',status:input.decision==='approve'?'reviewed-awaiting-publication-and-share':'rejection-recorded'};
 }

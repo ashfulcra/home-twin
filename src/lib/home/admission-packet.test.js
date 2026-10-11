@@ -1,0 +1,13 @@
+import {test,expect} from 'vitest';
+import {buildAdmissionPacket} from './admission-packet.js';
+import {createJoinRequest,buildJoinReview,joinIntentID,joinContentDigest} from './joining.js';
+import {householdPublication,prepareHouseholdBase} from './household-publication.js';
+const owner='11111111-1111-4111-8111-111111111111',user='22222222-2222-4222-8222-222222222222',id='33333333-3333-4333-8333-333333333333';
+const home={schemaVersion:1,id:'example',ownerUserId:owner,name:'Example',revision:4,members:[],equipment:[],rooms:[]};
+const request=createJoinRequest({id,requestedRole:'viewer',introduction:'Household'}, {homeId:home.id,ownerUserId:owner},user,'2026-10-11T18:00:00.000Z');request.id=await joinIntentID(request);
+const publication=householdPublication(await prepareHouseholdBase(home),{userId:user,role:'viewer'});
+const context={home,root:'/Example/twin',userId:owner,homeId:home.id,ownerUserId:owner,homeRevision:4,homeFileVersion:'baseline',homeDigest:'a'.repeat(64),requestDigest:await joinContentDigest(JSON.stringify(request)),publicationDigest:await joinContentDigest(JSON.stringify(publication))};
+const review=buildJoinReview(request,{id,decision:'approve',role:'viewer'},context,'2026-10-11T18:01:00.000Z');review.id=await joinIntentID(review);
+test('packet binds exact recipient and only curated home file; no grant or canonical mutation',async()=>{const before=JSON.stringify(home);const p=await buildAdmissionPacket(review,request,context,publication);expect(p.status).toBe('prepared-not-applied');expect(p.shareBody.fulcra_data_types).toEqual(['file:/shared/home-twin/example/home.json']);expect(p.shareBody.permissions).toEqual([{allowed_fulcra_userid:user}]);expect(p.shareBody.share_all_data).toBe(false);expect(p.shareBody.group_permissions).toEqual([]);expect(p.publicationDigest).toBe(context.publicationDigest);expect(p).not.toHaveProperty('grantId');expect(JSON.stringify(home)).toBe(before);});
+test('stale owner, baseline, source or publication is held before preparation',async()=>{for(const altered of [{...context,userId:user},{...context,homeRevision:9},{...context,requestDigest:'b'.repeat(64)},{...context,publicationDigest:'b'.repeat(64)}])await expect(buildAdmissionPacket(review,request,altered,publication)).rejects.toThrow();await expect(buildAdmissionPacket(review,request,context,{...publication,name:'Changed'})).rejects.toThrow();});
+test('legacy approval without exact content consent, rejection and changed role cannot grant',async()=>{for(const altered of [{...review,schema:'home-twin-join-review/1'},{...review,decision:'reject'},{...review,role:'contributor'}])await expect(buildAdmissionPacket(altered,request,context,publication)).rejects.toThrow();});

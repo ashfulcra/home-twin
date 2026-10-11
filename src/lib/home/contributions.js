@@ -31,6 +31,7 @@ export function reconcileContributions(baseline, contributions) {
  const hold=(c,reason)=>review.push({contribution:c,reason});
  const fields=new Set(['model','manufacturer','serial','capacity','installedAt']);
  for(const c of rows){
+  if(c.publishedDigestMismatch===true){hold(c,'accepted-id-collision');continue;}
   if(collisions.has(c.id)){hold(c,'id-collision');continue;}
   if(!c.authorUserId||!c.id){hold(c,'missing-provenance');continue;}
   const entity=home.equipment?.find((/** @type {any} */ item)=>item.id===c.entityId);

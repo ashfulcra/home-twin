@@ -51,7 +51,7 @@ export async function readMaintainerHome(homeId,root,get,options={}){
  if(home.id!==homeId)throw new Error('Home ID does not match its folder');
  if(home.ownerUserId!==userId)throw Error('Only the authenticated home maintainer can ingest household contributions');
  receipts.push({sourceUserId:userId,fileId:file.id,path:`${root}/home.json`,sha256:createHash('sha256').update(body).digest('hex')});
- const ingested=await ingestHome(home,userId,async account=>(await readFolder(`${root}/contributions`,account)).map(row=>row.value));
+ const ingested=await ingestHome(home,userId,async account=>(await readFolder(`${account===userId?root:`/shared/home-twin/${homeId}`}/contributions`,account)).map(row=>row.value));
  const audit=options.checkSources?await auditHomeSources(home,root,get):null;if(audit)receipts.push(...audit.receipts);
  const latest=await(await get(`input/v1/file_upload?path=${encodeURIComponent(root)}`)).json();const current=latest.files?.find((/** @type {any} */ f)=>f.name==='home.json');
  if(!current||current.id!==file.id||(await(await get(`input/v1/file_upload/${encodeURIComponent(current.id)}/download`)).text())!==body)throw Error('Baseline changed during intake; retry with fresh state');

@@ -50,3 +50,11 @@ test('explicit project intake audits only its own source folder and rejects sibl
  await expect(readMaintainerHome('wrong',root,isolated)).rejects.toThrow('match');
  await expect(readMaintainerHome('example',root,async p=>p==='user/v1alpha1/info'?Response.json({userid:'member'}):isolated(p))).rejects.toThrow('maintainer');
 });
+
+test('private-root owner intake reads peers only at their documented own-account shared return path',async()=>{
+ const root='/Example_Residence/twin';
+ /** @type {string[]} */ const paths=[];
+ const h={...home,members:[{userId:'peer',role:'contributor'}]};
+ const g=async (/** @type {string} */p)=>{paths.push(p);if(p==='user/v1alpha1/info')return Response.json({userid:'owner'});if(p.includes('/baseline/download'))return Response.json(h);if(p.includes('file_upload?')){const q=new URL('https://example.test/'+p).searchParams;const folder=q.get('path'),account=q.get('fulcra_userid');if(folder===root)return Response.json({files:[{name:'home.json',id:'baseline'}]});if(folder===root+'/contributions'&&account==='owner')return Response.json({files:[]});if(folder==='/shared/home-twin/example/contributions'&&account==='peer')return Response.json({files:[{name:'note.json',id:'note'}]});}if(p.includes('/note/download'))return Response.json({id:'note',homeId:'example',kind:'note',authorUserId:'peer',text:'Own contribution'});throw Error('Unexpected account/path');};
+ const r=await readMaintainerHome('example',root,g);expect(r.unavailableMembers).toEqual([]);expect(r.rows[0].sourceUserId).toBe('peer');expect(paths.some(p=>p.includes(encodeURIComponent(root+'/contributions'))&&p.includes('peer'))).toBe(false);
+});

@@ -1,0 +1,13 @@
+import {test,expect,vi,beforeEach} from 'vitest';
+import {createHash} from 'node:crypto';
+import {canonicalJSON} from '../home/canonical-json.js';
+const mocks=vi.hoisted(()=>({list:vi.fn()}));
+vi.mock('./fulcra-files.js',()=>({listFulcraJSON:mocks.list}));
+import {readHomeContributions} from './home-contributions.js';
+import {reconcileContributions} from '../home/contributions.js';
+const row={id:'33333333-3333-4333-8333-333333333333',homeId:'example',kind:'note',text:'Already accepted',authorUserId:'member',sourceUserId:'member'};
+const access={endpoint:'https://example.test/',root:'/shared/home-twin/example',userId:'member',role:'contributor',home:{id:'example',revision:1,equipment:[],notes:[row],publicationEvidence:[{id:row.id,digest:createHash('sha256').update(canonicalJSON(row)).digest('hex')}]}};
+beforeEach(()=>vi.clearAllMocks());
+test('same accepted immutable contribution is filtered by published digest without exporting its original',async()=>{mocks.list.mockResolvedValue([{...row}]);expect((await readHomeContributions(access,'caller')).rows).toEqual([]);});
+test('changed same-ID contribution is held instead of becoming a new acceptance after sanitizing originals',async()=>{mocks.list.mockResolvedValue([{...row,text:'Changed'}]);const r=await readHomeContributions(access,'caller');const result=reconcileContributions(access.home,r.rows);expect(result.accepted).toEqual([]);expect(result.review[0].reason).toBe('accepted-id-collision');expect(result.home.notes).toEqual([row]);});
+test('owner intake keeps full evidence and current peer folder checks',async()=>{mocks.list.mockResolvedValue([{...row}]);const r=await readHomeContributions({...access,role:'maintainer',home:{...access.home,members:[]}},'caller');expect(r.rows).toEqual([{...row,authorUserId:'member',sourceUserId:'member'}]);});
