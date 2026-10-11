@@ -6,7 +6,8 @@
  import HomeCare from './HomeCare.svelte';
  import SharedHomeConnect from './SharedHomeConnect.svelte';
  import { onMount } from 'svelte';
- let home: any = $state(null);
+ let home: any = $state(null);let firstLoad=true;
+ function correctRoom(room:any){section='Contributions';if(pending||saving){saveMessage='Finish confirming the pending contribution before starting a room correction.';return;}kind='geometry';entityId='';text=`Room: ${room.name} (${room.level}; model ID ${room.id})\n${room.sourcePage?'Drawing '+room.sourceSheet+', page '+room.sourcePage+'\n':''}Correction: `;saveMessage='Describe what should change. Your correction is saved for the home maintainer to reconcile.';}
  let loadState = $state('loading');
  let errorMessage = $state('');
  let agentStatus=$state('');
@@ -33,7 +34,7 @@
   try {
    const response=await fetch('/api/home');
    if(!response.ok)throw new Error(response.status===401?'Please sign in again.':'Your home data is temporarily unavailable.');
-   const data=await response.json();home=data.home;if(sourceRequest&&(sourceRequest.homeId!==home?.id||sourceRequest.revision!==home?.revision))sourceRequest=null;followups=data.followups;role=data.role??'maintainer';review=data.review??[];reviewContext=data.reviewContext??[];loadState=data.status;
+   const data=await response.json();home=data.home;if(sourceRequest&&(sourceRequest.homeId!==home?.id||sourceRequest.revision!==home?.revision))sourceRequest=null;followups=data.followups;role=data.role??'maintainer';review=data.review??[];reviewContext=data.reviewContext??[];loadState=data.status;if(firstLoad&&home?.reconstruction?.buildingModel)section='Layout';firstLoad=false;
   }catch(e){loadState='error';errorMessage=e instanceof Error?e.message:String(e);}
  }
  onMount(load);
@@ -51,7 +52,7 @@
    <div><p class="eyebrow">Your home, remembered</p><h1>{home.name}</h1><p>Equipment, care and the knowledge that keeps your home running.</p></div>
    {#if home.model?.url}<a class="model-link" href={home.model.url} target="_blank" rel="noreferrer">{home.model.label} ↗</a>{/if}
   </header>
-  <nav aria-label="Home sections">{#each sections as name}<button class:active={section===name} onclick={()=>section=name}>{name}</button>{/each}</nav>
+  <nav aria-label="Home sections">{#each sections as name}<button class:active={section===name} onclick={()=>section=name}>{name==='Layout'&&home.reconstruction?.buildingModel?'Home model':name}</button>{/each}</nav>
   {#if section==='Overview'}
    <div class="stats"><article><span>{home.equipment.length}</span><p>Equipment records</p></article><article><span>{home.schedules.filter((s:any)=>s.kind==='maintenance'&&s.state==='past-due').length}</span><p>Known maintenance past due</p></article><article><span>{home.history.filter((h:any)=>h.kind==='maintenance'&&h.status==='completed').length}</span><p>Recorded service visits</p></article></div>
    <section><h2>What needs a little attention</h2><p class="muted">Missing information stays visible. It won’t stop you using your home.</p><ul>{#each home.knowledgeGaps??[] as gap}<li>{gap}</li>{/each}</ul></section>
@@ -68,7 +69,7 @@
   {:else if section==='Devices'}
    <HomeFeeds onEquipment={(id)=>{section='Equipment';query=home.equipment.find((e:any)=>e.id===id)?.name??'';}} />
   {:else if section==='Layout'}
-   <HomeLayout {home} {role} />
+   <HomeLayout {home} {role} oncorrect={correctRoom} />
   {:else if section==='Care'}
    <HomeCare {home} {role} onchanged={load} onEquipment={(id)=>{section='Equipment';query=home.equipment.find((e:any)=>e.id===id)?.name??'';}} />
   {:else if section==='Contributions'}

@@ -24,6 +24,7 @@
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
     "@tailwindcss/vite": "^4.1.17",
     "@types/node": "^22",
+    "@types/three": "^0.186.0",
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-svelte": "^3.13.1",
@@ -41,7 +42,8 @@
   "dependencies": {
     "daisyui": "^5.5.14",
     "dompurify": "^3.4.16",
-    "marked": "^18.1.0"
+    "marked": "^18.1.0",
+    "three": "^0.186.1"
   },
   "overrides": {
     "cookie": "^0.7.2"

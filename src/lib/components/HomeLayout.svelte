@@ -1,10 +1,11 @@
 <script lang="ts">
+ import HomeBuilding from './HomeBuilding.svelte';
  import HomeReconstruction from './HomeReconstruction.svelte';
  import HomeLayoutSchematic from './HomeLayoutSchematic.svelte';
  import {onMount} from 'svelte';
  import {starterPlan,interviewPlan,parseLength,validatePlan,planWarnings} from '$lib/home/layout.js';
  let view=$state('2D');
- let {home,role}=$props<{home:any,role:string}>();let plan:any=$state(null);let draftList:any[]=$state([]);let roomId=$state('');let side=$state('north');let length=$state('');let names=$state('');let adjacency=$state('');let message=$state('');let pending:any=$state(null);let saving=$state(false);
+ let {home,role,oncorrect}=$props<{home:any,role:string,oncorrect?:(room:any)=>void}>();let plan:any=$state(null);let draftList:any[]=$state([]);let roomId=$state('');let side=$state('north');let length=$state('');let names=$state('');let adjacency=$state('');let message=$state('');let pending:any=$state(null);let saving=$state(false);
  let room:any=$derived(plan?.rooms.find((r:any)=>r.id===roomId));let warnings=$derived(plan?planWarnings(plan):[]);
  let bounds=$derived(plan?{x:Math.min(...plan.rooms.map((r:any)=>r.x))-3,y:Math.min(...plan.rooms.map((r:any)=>r.y))-3,w:Math.max(...plan.rooms.map((r:any)=>r.x+r.w))-Math.min(...plan.rooms.map((r:any)=>r.x))+6,h:Math.max(...plan.rooms.map((r:any)=>r.y+r.h))-Math.min(...plan.rooms.map((r:any)=>r.y))+6}:{x:0,y:0,w:40,h:30});
  function select(id:string,direction='north'){roomId=id;side=direction;const r=plan.rooms.find((r:any)=>r.id===id);length=r.measurements?.[direction]?.original??`${['north','south'].includes(direction)?r.w:r.h}ft`;}
@@ -16,7 +17,8 @@
  function addRoom(){plan.rooms.push({id:'room-'+crypto.randomUUID(),name:'New room',x:bounds.x+bounds.w,y:0,w:12,h:12,accuracy:'estimated',measurements:{}});select(plan.rooms.at(-1).id);}
  onMount(load);
 </script>
-{#if home.reconstruction}<HomeReconstruction model={home.reconstruction}/>{/if}
+{#if home.reconstruction?.buildingModel}<HomeBuilding model={home.reconstruction.buildingModel} {oncorrect} readonly={role==='viewer'}/>{/if}
+{#if home.reconstruction}<details><summary>Original traced footprints and source review</summary><HomeReconstruction model={home.reconstruction}/></details>{/if}
 <section><h2>Start a correctable floor plan</h2><p>Useful first, precise later. These examples and interview positions are estimates, with north at the top. Saved drafts preserve the accepted house model.</p>
  {#if role==='viewer'}<p>Your household has given you view access.</p>{:else}<fieldset disabled={saving||!!pending}><div class="starters"><button onclick={()=>use(starterPlan('simple'))}>Simple rectangle</button><button onclick={()=>use(starterPlan('hall'))}>Rooms around a hall</button><button onclick={()=>use(starterPlan('lshape'))}>L-shaped starting point</button></div>
  <details><summary>Build from a layout interview</summary><label>What are the familiar room names? <textarea bind:value={names} placeholder="Kitchen&#10;Living Room&#10;Office"></textarea></label><label>Which rooms are adjacent? <textarea bind:value={adjacency} placeholder="Kitchen -> Living Room&#10;Living Room -> Office"></textarea></label><p>Use A → B as <code>A -&gt; B</code>. Pairs start beside each other toward the east; correct directions below. Unknown dimensions start at 14ft.</p><button onclick={interview}>Build rough plan from answers</button></details></fieldset>{/if}
