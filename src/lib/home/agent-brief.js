@@ -1,5 +1,6 @@
 import {validateReconstruction} from './reconstruction.js';
 import {buildArchitectureBrief} from './architecture-brief.js';
+import {buildAgentStart} from './agent-start.js';
 import {projectHome} from './projection.js';
 /** @param {any} value */
 const strings=value=>Array.isArray(value)?value.filter(v=>typeof v==='string'):[];
@@ -31,6 +32,7 @@ export function buildAgentBrief(home,options={}){
  if(!equipment.length)questions.push({kind:'systems',prompt:'Which systems or items do you want to remember first? Start with equipment, care contacts or one recurring household task; exact layout is optional.',capture:'interview'});
  if(!home.plan&&!reconstruction&&!['available','size-limited'].includes(architecture.status))questions.push({kind:'layout',prompt:'If a layout would help, start with familiar room names and which rooms connect. A rough sketch, starter plan or scan can be refined later; accurate dimensions are optional.',capture:'room-adjacency-or-rough-plan'});
  return {schema:'home-twin-agent-brief/1',generatedAt,scope:'Accepted snapshot only; read and reconcile current contributions before publishing.',
+  gettingStarted:buildAgentStart(home,{...options,role,root}),
   permissions:{role,canPublishAcceptedSnapshot:role==='maintainer',requiresFreshFulcraCheck:true},
   home:{id:home.id,name:home.name,revision:home.revision,timezone:home.timezone??null,rooms:(home.rooms??[]).map((/** @type {any} */ r)=>({id:r.id,name:r.name,accuracy:r.accuracy??'not-recorded'})),equipment,acceptedPlanAvailable:!!home.plan,reconstructionAvailable:!!reconstruction,reconstructionRoomCount:reconstruction?.rooms.length??0,
    architecture,sources:(home.sources??[]).map((/** @type {any} */ s)=>({id:s.id,title:s.title,path:s.path,origin:typeof s.origin==='string'?s.origin:null,verifiedAt:s.verifiedAt??null})),knowledgeGaps:strings(home.knowledgeGaps)},

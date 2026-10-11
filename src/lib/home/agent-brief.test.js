@@ -1,6 +1,33 @@
 import {test,expect} from 'vitest';
 import {buildAgentBrief} from './agent-brief.js';
 const home={schemaVersion:1,revision:1,id:'example-home',name:'Example home',rooms:[],equipment:[{id:'heat',name:'Heating system',inventoryStatus:'needs-details',model:null,sourceIds:['intake'],vendorToken:'do-not-export'}],contacts:[],history:[],schedules:[],sources:[{id:'intake',title:'Intake',path:'/shared/home-twin/example-home/sources/intake.json',verifiedAt:null}],notes:[],plan:null};
+const owner='00000000-0000-4000-8000-000000000001';
+const member='00000000-0000-4000-8000-000000000002';
+test('a contributor bootstrap pairs with the resolved owner and preserves the same home',()=>{
+ const b=buildAgentBrief(home,{role:'contributor',ownerUserId:owner,userId:member,root:'/shared/home-twin/example-home'});
+ expect(b.gettingStarted.status).toBe('ready');
+ expect(b.gettingStarted.context).toEqual({homeId:'example-home',homeName:'Example home',ownerUserId:owner,userId:member,role:'contributor',acceptedRoot:'/shared/home-twin/example-home',contributionRoot:'/shared/home-twin/example-home/contributions'});
+ expect(b.gettingStarted.actions).toEqual(['verify-access','read-existing-home','contribute-own-account','pair-owner-mesh']);
+ expect(b.gettingStarted.prompt).toContain(owner);expect(b.gettingStarted.prompt).toContain(member);
+ expect(b.gettingStarted.prompt).toContain('fulcra-mesh/SKILL.md');expect(b.gettingStarted.prompt).toContain('home-twin:example-home');
+ expect(b.gettingStarted.connectionStatus).toBe('not-verified');expect(b.permissions.canPublishAcceptedSnapshot).toBe(false);
+});
+test('viewer handoff cannot instruct contributions or peer sharing',()=>{
+ const b=buildAgentBrief(home,{role:'viewer',ownerUserId:owner,userId:member,root:'/shared/home-twin/example-home'});
+ expect(b.gettingStarted.actions).toEqual(['verify-access','read-existing-home']);
+ expect(b.gettingStarted.context?.contributionRoot).toBeNull();expect(b.gettingStarted.prompt).not.toContain('fulcra-mesh/SKILL.md');
+});
+test('owner bootstrap continues the current record without pairing to itself or exporting its private root',()=>{
+ const b=buildAgentBrief(home,{role:'maintainer',ownerUserId:owner,userId:owner,root:'/home/twin'});
+ expect(b.gettingStarted.actions).toEqual(['verify-access','read-existing-home','maintain-accepted-home']);
+ expect(b.gettingStarted.context?.acceptedRoot).toBe('/home/twin');expect(b.gettingStarted.context?.contributionRoot).toBeNull();
+ expect(b.gettingStarted.prompt).not.toContain('fulcra-mesh/SKILL.md');
+});
+test('missing identity or inconsistent access fails closed rather than guessing a peer or contribution path',()=>{
+ for(const options of [{role:'contributor'},{role:'contributor',ownerUserId:owner,userId:owner,root:'/shared/home-twin/example-home'},{role:'maintainer',ownerUserId:owner,userId:member,root:'/home/twin'},{role:'viewer',ownerUserId:owner,userId:member,root:'/unrelated-private-vault'},{role:'unverified',ownerUserId:owner,userId:member}]){
+  const b=buildAgentBrief(home,options);expect(b.gettingStarted.status).toBe('needs-verified-context');expect(b.gettingStarted.prompt).toBeNull();
+ }
+});
 test('unknown inventory yields targeted questions without guessed service dates or geometry',()=>{
  const b=buildAgentBrief(home,{role:'maintainer',generatedAt:'2026-10-09T15:00:00Z'});
  expect(b.home.equipment[0]?.model).toBeNull();expect(b.home.equipment[0]?.lastService).toBeNull();

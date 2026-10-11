@@ -13,6 +13,14 @@ The home belongs to a designated maintainer's Fulcra account. Other household me
 
 Only the designated maintainer updates accepted snapshots. For an existing owner using `/home/twin/home.json`, migration is an explicit version-preserving agent operation; this feature does not automatically export or share private records.
 
+## Connect a household member's agent
+
+After contributor approval and a successful shared-home read, Household provides a home-specific getting-started prompt. The member pastes it into their own Fulcra-connected agent. It includes the resolved owner ID rather than asking the member to guess a recipient or borrow credentials. It starts with current identity and membership checks, then explains the contribution folder share and optional dedicated mesh relationship with the owner's designated maintainer. The owner currently configured for a deployment is replaceable; no real owner identity belongs in public examples.
+
+Home access, contribution sharing and agent pairing are separate states. The prompt is instructions, not a grant or proof of connection. The member consents to their own contribution/outbox shares; the owner consents to their home/return-outbox shares. A mesh message cannot grant membership or rewrite an accepted home. Use confirmed incoming share account IDs, exact message readback and a return acknowledgment before reporting pairing complete. Viewer prompts do not offer contribution pairing. See [agent handoff](agent-handoff.md) and the official [mesh skill](https://raw.githubusercontent.com/fulcradynamics/agent-skills/main/skills/fulcra-mesh/SKILL.md).
+
+The current manual shared-home connection is a pilot. An existing-home deployment's join-request/admin-approval flow is a separate product requirement: sign-in or signup must join that named home, never silently provision another one. A prospective member needs join instructions before approval and the verified contribution prompt after approval. Do not describe that approval screen as available until implemented and tested.
+
 ## Revocation and recovery
 
 Revoke the relevant Fulcra share and remove the member from the accepted record. Future requests resolve current file permissions and membership, with private no-store responses. The app does not promise to erase information a member already viewed or downloaded. Remove a contributor's inbound share or member entry to stop future ingestion; already accepted facts retain provenance until deliberately corrected.
