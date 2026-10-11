@@ -6,7 +6,8 @@ export function buildAgentStart(home, options) {
  const {role, ownerUserId, userId, root} = options;
  const sharedRoot = `/shared/home-twin/${home.id}`;
  const ownRoot = typeof root === 'string' && /^\/[a-zA-Z0-9_-]+\/twin$/.test(root);
- if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(home.id) || !uuid.test(ownerUserId ?? '') || !uuid.test(userId ?? '') ||
+ if (typeof home.id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,79}$/.test(home.id) ||
+     typeof ownerUserId !== 'string' || !uuid.test(ownerUserId) || typeof userId !== 'string' || !uuid.test(userId) ||
      (home.ownerUserId && home.ownerUserId !== ownerUserId) ||
      !['maintainer','contributor','viewer'].includes(role) ||
      (role === 'maintainer' ? userId !== ownerUserId || !(ownRoot || root === sharedRoot) : userId === ownerUserId || root !== sharedRoot)) {

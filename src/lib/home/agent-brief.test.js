@@ -28,6 +28,14 @@ test('missing identity or inconsistent access fails closed rather than guessing 
   const b=buildAgentBrief(home,options);expect(b.gettingStarted.status).toBe('needs-verified-context');expect(b.gettingStarted.prompt).toBeNull();
  }
 });
+test('missing or coerced identifiers cannot become a seemingly verified agent context',()=>{
+ for(const id of [undefined,null,123,['example-home']]){
+  const b=buildAgentBrief({...home,id},{role:'maintainer',ownerUserId:owner,userId:owner,root:'/home/twin'});
+  expect(b.gettingStarted.status).toBe('needs-verified-context');expect(b.gettingStarted.prompt).toBeNull();
+ }
+ const b=buildAgentBrief(home,{role:'maintainer',ownerUserId:[owner],userId:[owner],root:'/home/twin'});
+ expect(b.gettingStarted.status).toBe('needs-verified-context');
+});
 test('unknown inventory yields targeted questions without guessed service dates or geometry',()=>{
  const b=buildAgentBrief(home,{role:'maintainer',generatedAt:'2026-10-09T15:00:00Z'});
  expect(b.home.equipment[0]?.model).toBeNull();expect(b.home.equipment[0]?.lastService).toBeNull();
