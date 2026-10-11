@@ -19,7 +19,7 @@ After contributor approval and a successful shared-home read, Household provides
 
 Home access, contribution sharing and agent pairing are separate states. The prompt is instructions, not a grant or proof of connection. The member consents to their own contribution/outbox shares; the owner consents to their home/return-outbox shares. A mesh message cannot grant membership or rewrite an accepted home. Use confirmed incoming share account IDs, exact message readback and a return acknowledgment before reporting pairing complete. Viewer prompts do not offer contribution pairing. See [agent handoff](agent-handoff.md) and the official [mesh skill](https://raw.githubusercontent.com/fulcradynamics/agent-skills/main/skills/fulcra-mesh/SKILL.md).
 
-The current manual shared-home connection is a pilot. Named deployments now provide joining instructions before approval and the verified role-specific prompt after approval. An automatic join-request/admin-approval screen remains a separate requirement; the joining page explicitly says it has not sent a request.
+The current manual shared-home connection is a pilot. Named deployments provide joining instructions, caller-owned private requests, owner review intents and the verified role-specific prompt after current access. See [request and review workflow](join-requests.md). A saved review does not automatically publish or grant access; the designated maintainer's guarded application remains separate. The joining page explicitly says it sends no notification or share.
 
 ## Named existing-home deployments
 
