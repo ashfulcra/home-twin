@@ -48,3 +48,5 @@ Unavailable inbound shares are reported separately; one unavailable member does 
 ## Verification before claiming readiness
 
 Use two genuine household accounts to verify: shared home read; contributor submission in their own account; maintainer ingestion and publication; viewer write denial; unrelated account denial; revocation followed by a fresh read. Synthetic contract tests help development but do not replace this acceptance check. Until that live workflow is verified, label household collaboration as a pilot.
+
+Owners discover explicitly shared exact request files in Household → Join requests, with an attention badge when the app opens or refocuses and a manual refresh. Private save alone is not delivery, and no off-app notification is sent. See [owner inbox behavior and limits](join-requests.md#owner-inbox-contract).

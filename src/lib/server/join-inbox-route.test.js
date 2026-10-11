@@ -1,0 +1,11 @@
+import {test,expect,vi,beforeEach} from 'vitest';
+const mocks=vi.hoisted(()=>({resolve:vi.fn(),reader:vi.fn(),load:vi.fn()}));
+vi.mock('$lib/server/home-access.js',()=>({resolveHome:mocks.resolve}));vi.mock('$lib/server/join-inbox-reader.js',()=>({joinInboxReader:mocks.reader}));vi.mock('$lib/server/join-inbox.js',()=>({loadJoinInbox:mocks.load}));
+import {GET} from '../../routes/api/home/join-inbox/+server.js';
+const owner='11111111-1111-4111-8111-111111111111';
+/** @type {any} */const access={deployment:{homeId:'example'},userId:owner,ownerUserId:owner,role:'maintainer',endpoint:'https://example.test/',root:'/Example/twin'};
+/** @param {boolean} [auth] @returns {any} */const event=(auth=true)=>({cookies:{get:()=>auth?'caller-token':null}});
+beforeEach(()=>{vi.clearAllMocks();mocks.resolve.mockResolvedValue(access);mocks.load.mockResolvedValue({status:'current-owner-inbox',requests:[],attentionCount:0});});
+test('inbox is current-owner only and never publicly cacheable',async()=>{const r=await GET(event());expect(r.headers.get('cache-control')).toBe('private, no-store');expect((await r.json()).status).toBe('current-owner-inbox');expect(mocks.reader).toHaveBeenCalledExactlyOnceWith('https://example.test/','caller-token','/Example/twin');});
+test('anonymous and foreign/member/generic callers denied before discovery',async()=>{await expect(GET(event(false))).rejects.toMatchObject({status:401});for(const patch of [{userId:'other'},{role:'viewer'},{deployment:null}]){mocks.resolve.mockResolvedValue({...access,...patch});await expect(GET(event())).rejects.toMatchObject({status:403});}expect(mocks.reader).not.toHaveBeenCalled();});
+test('a discovery outage returns an explicit failure, never a fake zero count',async()=>{mocks.load.mockRejectedValue(Error('private downstream status with sensitive details'));await expect(GET(event())).rejects.toMatchObject({status:503});try{await GET(event());}catch(e){expect(String(JSON.stringify(e))).not.toContain('sensitive details');}});

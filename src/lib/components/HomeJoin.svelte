@@ -6,7 +6,7 @@
  const prompt=$derived(saved?.prompt??join?.prompt??'');
  async function saveRequest(){
   saving=true;message='';
-  try{if(!pending){const recordedAt=new Date().toISOString();const value=createJoinRequest({id:crypto.randomUUID(),introduction,requestedRole},deployment,join.context.userId,recordedAt);pending={id:await joinIntentID(value),introduction,requestedRole,recordedAt};}const response=await fetch('/api/home/join-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pending)});const result=await response.json();if(!response.ok){if(response.status===400)pending=null;throw new Error(result.message??'Request save could not be confirmed. Retry this same request.');}saved=result;if(result.status==='pending-readback')message='Save confirmation is pending. Retry this same request before sharing it.';else{pending=null;message='Saved in your own account. Ask your agent to share this exact request with the owner, then pass the code to the owner. No notification or home access was created.';}}catch(e){message=e instanceof Error?e.message:String(e);}finally{saving=false;}
+  try{if(!pending){const recordedAt=new Date().toISOString();const value=createJoinRequest({id:crypto.randomUUID(),introduction,requestedRole},deployment,join.context.userId,recordedAt);pending={id:await joinIntentID(value),introduction,requestedRole,recordedAt};}const response=await fetch('/api/home/join-request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pending)});const result=await response.json();if(!response.ok){if(response.status===400)pending=null;throw new Error(result.message??'Request save could not be confirmed. Retry this same request.');}saved=result;if(result.status==='pending-readback')message='Save confirmation is pending. Retry this same request before sharing it.';else{pending=null;message='Saved in your own account. Ask your agent to share this exact request with the owner, it will appear in the owner’s Household inbox once that share is confirmed. Keep the code as a fallback. Saving here sends no email or push alert and grants no access.';}}catch(e){message=e instanceof Error?e.message:String(e);}finally{saving=false;}
  }
  async function copyPrompt(){try{await navigator.clipboard.writeText(prompt);message='Prompt copied. Paste it into your agent chat.';}catch{message='Select the prompt below and copy it manually.';}}
 </script>
@@ -15,7 +15,7 @@
  <h1>{deployment.name}</h1>
  <p>You’re signed in. This home’s owner still needs to approve your access and share its records with you.</p>
  <ol>
-  <li>Give the owner your Fulcra account ID below and ask for viewer or contributor access.</li>
+  <li>Prepare your request below, then ask your agent to share that exact file with the owner. It can then appear in their Household inbox.</li>
   <li>The owner approves your role and shares this home’s selected records. Contributors separately approve sharing their contributions back.</li>
   <li>Return here and refresh. Once you have contributor access, Household explains how to connect your agent to the owner’s home agent.</li>
  </ol>
@@ -39,7 +39,7 @@
   <button onclick={copyPrompt}>Copy getting-started prompt</button>
  {/if}
  <button onclick={onrefresh}>Refresh home access</button>
- <p class="note">Signing in doesn’t grant home access. This page never sends an owner notification or creates a share.</p>
+ <p class="note">Signing in doesn’t grant home access. This page sends no email or push alert and creates no share. Your request appears in the owner’s app only after its exact file is shared.</p>
  <p role="status">{message}</p>
 </section>
 <style>

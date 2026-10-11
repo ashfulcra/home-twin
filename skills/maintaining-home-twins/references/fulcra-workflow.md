@@ -81,3 +81,7 @@ Use Find records for system, provider/trade, model or care-task words. Equipment
 ## Changed original evidence
 
 Use the audited cycle command above with the same verified root and existing state to include current original-source checksums in stable private work. Compare changed originals with accepted dependent facts before creating contributions or review decisions. Missing checksums require a first inspected baseline; missing/revoked reads are blockers, not proof the original is unchanged. Do not automatically replace facts or geometry, rewrite stored checksum evidence, or borrow a contributor token. Limits are 100 sources and 10 MiB per original. The audit reads registered attachment authors through current shares; it grants nothing. The existing publication protocol remains a separate explicit action.
+
+### Join request discovery
+
+After confirming the applicant's explicit direct read-only/no-history share of the exact content-bound request file to the configured owner, direct the owner to Household → Join requests. The owner's app checks incoming shares on open/refocus or manual refresh and shows an attention badge. A private save alone does not notify the owner; no email/push is configured. The code remains a fallback. Treat unavailable, partial, unsupported or changed shares and unverified owner decisions as explicit review work, never as no requests or delivered membership. Discovery grants no access. See `docs/join-requests.md` for bounds and the current-owner contract.
