@@ -1,3 +1,4 @@
+import {validHomeRoot} from '../src/lib/home/home-root.js';
 import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {auditHomeSources} from './source-audit.mjs';
@@ -8,11 +9,11 @@ export async function syncHome(homeId,options={}){return createMaintainerClient(
 /** @param {string} homeId @param {{root?:string,checkSources?:boolean}} options */
 export function createMaintainerClient(homeId,options={}){
  if(!/^[a-z0-9][a-z0-9-]{0,79}$/.test(homeId))throw new Error('Invalid home ID');
+ const root=options.root??`/shared/home-twin/${homeId}`;
+ if(!validHomeRoot(homeId,root))throw Error('Invalid home root');
  const endpoint='https://api.fulcradynamics.com/';
  const token=execFileSync('fulcra',['auth','print-access-token'],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
  async function get(/** @type {string} */ path){const r=await fetch(endpoint+path,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(15000)});if(!r.ok)throw new Error(`Fulcra read status ${r.status}`);return r;}
- const root=options.root??`/shared/home-twin/${homeId}`;
- if(!['/home/twin',`/shared/home-twin/${homeId}`].includes(root))throw Error('Invalid home root');
  return {read:()=>readMaintainerHome(homeId,root,get,options),
   readSnapshot:async (/** @type {string} */ path)=>{if(!path.startsWith(root+'/history/'))throw Error('Only intended home history may be inspected');const split=path.lastIndexOf('/');const listing=await(await get(`input/v1/file_upload?path=${encodeURIComponent(path.slice(0,split))}`)).json();const file=listing.files?.find((/** @type {any} */ f)=>f.name===path.slice(split+1));return file?await(await get(`input/v1/file_upload/${encodeURIComponent(file.id)}/download`)).json():null;},
   write:async (/** @type {string} */ path,/** @type {any} */ value,/** @type {(()=>Promise<void>)|undefined} */ beforeCommit=undefined)=>{
@@ -28,7 +29,7 @@ export function createMaintainerClient(homeId,options={}){
 /** Read only the intended home through current caller permissions.
  * @param {string} homeId @param {string} root @param {(path:string)=>Promise<Response>} get @param {{checkSources?:boolean}} options */
 export async function readMaintainerHome(homeId,root,get,options={}){
- if(!/^[a-z0-9][a-z0-9-]{0,79}$/.test(homeId)||!['/home/twin',`/shared/home-twin/${homeId}`].includes(root))throw Error('Invalid home ID or home root');
+ if(!/^[a-z0-9][a-z0-9-]{0,79}$/.test(homeId)||!validHomeRoot(homeId,root))throw Error('Invalid home ID or home root');
  const receipts=[];
  const principal=await(await get('user/v1alpha1/info')).json();const userId=principal.userid;
  async function readFolder(/** @type {string} */ folder,/** @type {string} */ sourceUserId){

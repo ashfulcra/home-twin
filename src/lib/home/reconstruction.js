@@ -22,7 +22,14 @@ export function validateReconstruction(input){
   if(Math.abs(area)<0.001)throw Error('Empty footprint');
   return {id:text(r.id,100),name:text(r.name,120),level:r.level,polygon,sourcePage:r.sourcePage,sourceSheet:text(r.sourceSheet,100),heightFeet:r.heightFeet,geometryStatus:text(r.geometryStatus,120),constructionStatus:text(r.constructionStatus,120)};
  });
- return {schemaVersion:1,id:text(input.id,100),status:'draft-needs-review',units:'feet',coordinateFrame:{x:text(input.coordinateFrame?.x),y:text(input.coordinateFrame?.y),north:text(input.coordinateFrame?.north)||'unverified'},source:{file:text(input.source.file,200),sha256:input.source.sha256},levels,rooms,limitations:Array.isArray(input.limitations)?input.limitations.slice(0,50).map((/** @type {any} */v)=>text(v,1000)):[]};
+ /** @type {{id:string,level:string,sourcePage:number,sourceSheet:string,closed:boolean,fillAllowed:boolean,polyline:number[][]}[]} */
+ const envelopes=(input.envelopes??[]).map((/** @type {any} */e)=>{
+  if(!Array.isArray(input.envelopes)||input.envelopes.length>30||!e||typeof e.id!=='string'||!e.id||e.id.length>100||!ids.has(e.level)||!Number.isInteger(e.sourcePage)||e.sourcePage<1||!text(e.sourceSheet,100)||typeof e.closed!=='boolean'||!Array.isArray(e.polyline)||e.polyline.length<(e.closed?3:2)||e.polyline.length>500||e.polyline.some((/** @type {any} */p)=>!Array.isArray(p)||p.length!==2||!p.every(finite)))throw Error('Invalid exterior evidence');
+  const polyline=e.polyline.map((/** @type {number[]} */p)=>[...p]);const count=e.closed?polyline.length:polyline.length-1;
+  for(let i=0;i<count;i++){const a=polyline[i],b=polyline[(i+1)%polyline.length];if(a[0]===b[0]&&a[1]===b[1])throw Error('Repeated exterior vertex');for(let j=i+2;j<count;j++){if(e.closed&&i===0&&j===count-1)continue;if(segmentsIntersect(a,b,polyline[j],polyline[(j+1)%polyline.length]))throw Error('Crossed exterior line');}}
+  return {id:e.id,level:e.level,sourcePage:e.sourcePage,sourceSheet:text(e.sourceSheet,100),closed:e.closed,fillAllowed:false,polyline};
+ });
+ return {schemaVersion:1,id:text(input.id,100),status:'draft-needs-review',units:'feet',coordinateFrame:{x:text(input.coordinateFrame?.x),y:text(input.coordinateFrame?.y),north:text(input.coordinateFrame?.north)||'unverified'},source:{file:text(input.source.file,200),sha256:input.source.sha256},levels,rooms,envelopes,limitations:Array.isArray(input.limitations)?input.limitations.slice(0,50).map((/** @type {any} */v)=>text(v,1000)):[]};
 }
 /** Single-floor illustration, never a physical extrusion or floor stack.
  * @param {any} input @param {string} level @param {number} turn */

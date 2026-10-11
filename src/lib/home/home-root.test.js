@@ -1,0 +1,3 @@
+import {test,expect} from 'vitest';
+import {validHomeRoot} from './home-root.js';
+test('explicit independent home roots are bounded and do not loosen default household roots',()=>{expect(validHomeRoot('example','/Example_Residence/twin')).toBe(true);expect(validHomeRoot('example','/shared/home-twin/example')).toBe(true);expect(validHomeRoot('example','/home/twin')).toBe(true);for(const root of ['/private/secrets','/shared/home-twin/other','/Example/../twin','/Example//twin','/Example/twin/sources','relative/twin'])expect(validHomeRoot('example',root)).toBe(false);expect(validHomeRoot('../bad','/Example/twin')).toBe(false);});

@@ -1,3 +1,4 @@
+import {validateReconstruction} from './reconstruction.js';
 import {projectHome} from './projection.js';
 /** @param {any} value */
 const strings=value=>Array.isArray(value)?value.filter(v=>typeof v==='string'):[];
@@ -13,6 +14,7 @@ function attribution(entity){
 export function buildAgentBrief(home,options={}){
  const generatedAt=options.generatedAt??new Date().toISOString();const projected=projectHome(home,generatedAt);
  const role=['maintainer','contributor','viewer'].includes(options.role)?options.role:'unverified';
+ let reconstruction=null;try{if(home.reconstruction)reconstruction=validateReconstruction(home.reconstruction);}catch{/* Invalid drafts do not suppress capture questions. */}
  const root=options.root??`/shared/home-twin/${home.id}`;
  /** @type {any[]} */const questions=[];
  const equipment=projected.equipment.map((/** @type {any} */ e)=>{
@@ -25,10 +27,10 @@ export function buildAgentBrief(home,options={}){
    provider:e.provider?{id:e.provider.id,name:e.provider.name,trade:e.provider.trade??null,phone:e.provider.phone??null,email:e.provider.email??null,...attribution(e.provider)}:null};
  });
  if(!equipment.length)questions.push({kind:'systems',prompt:'Which systems or items do you want to remember first? Start with equipment, care contacts or one recurring household task; exact layout is optional.',capture:'interview'});
- if(!home.plan)questions.push({kind:'layout',prompt:'If a layout would help, start with familiar room names and which rooms connect. A rough sketch, starter plan or scan can be refined later; accurate dimensions are optional.',capture:'room-adjacency-or-rough-plan'});
+ if(!home.plan&&!reconstruction)questions.push({kind:'layout',prompt:'If a layout would help, start with familiar room names and which rooms connect. A rough sketch, starter plan or scan can be refined later; accurate dimensions are optional.',capture:'room-adjacency-or-rough-plan'});
  return {schema:'home-twin-agent-brief/1',generatedAt,scope:'Accepted snapshot only; read and reconcile current contributions before publishing.',
   permissions:{role,canPublishAcceptedSnapshot:role==='maintainer',requiresFreshFulcraCheck:true},
-  home:{id:home.id,name:home.name,revision:home.revision,timezone:home.timezone??null,rooms:(home.rooms??[]).map((/** @type {any} */ r)=>({id:r.id,name:r.name,accuracy:r.accuracy??'not-recorded'})),equipment,acceptedPlanAvailable:!!home.plan,
+  home:{id:home.id,name:home.name,revision:home.revision,timezone:home.timezone??null,rooms:(home.rooms??[]).map((/** @type {any} */ r)=>({id:r.id,name:r.name,accuracy:r.accuracy??'not-recorded'})),equipment,acceptedPlanAvailable:!!home.plan,reconstructionAvailable:!!reconstruction,reconstructionRoomCount:reconstruction?.rooms.length??0,
    sources:(home.sources??[]).map((/** @type {any} */ s)=>({id:s.id,title:s.title,path:s.path,origin:typeof s.origin==='string'?s.origin:null,verifiedAt:s.verifiedAt??null})),knowledgeGaps:strings(home.knowledgeGaps)},
   readFirst:[`${root}/home.json`,`${root}/agent-request.json`],
   reviewContext:{downloadEndpoint:'/api/home/review',scope:'Private bounded context; read current original contributions before deciding.'},

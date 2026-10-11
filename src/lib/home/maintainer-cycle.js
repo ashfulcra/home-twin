@@ -1,3 +1,4 @@
+import {validHomeRoot} from './home-root.js';
 import {createHash} from 'node:crypto';
 import {canonicalJSON} from './canonical-json.js';
 import {reconcileContributions} from './contributions.js';
@@ -9,7 +10,7 @@ const digest=value=>createHash('sha256').update(canonicalJSON(value)).digest('he
  * @param {any} input */
 export function buildMaintainerCycle(input){
  const {home,principalId,root,baselineVersion}=input;
- if(!home||home.schemaVersion!==1||!Number.isSafeInteger(home.revision)||home.revision<1||!(/^[a-z0-9][a-z0-9-]{0,79}$/).test(home.id)||typeof principalId!=='string'||!principalId||home.ownerUserId!==principalId||!['/home/twin',`/shared/home-twin/${home.id}`].includes(root)||typeof baselineVersion!=='string'||!baselineVersion)throw Error('Current authenticated maintainer, matching home root and baseline version required');
+ if(!home||home.schemaVersion!==1||!Number.isSafeInteger(home.revision)||home.revision<1||!(/^[a-z0-9][a-z0-9-]{0,79}$/).test(home.id)||typeof principalId!=='string'||!principalId||home.ownerUserId!==principalId||!validHomeRoot(home.id,root)||typeof baselineVersion!=='string'||!baselineVersion)throw Error('Current authenticated maintainer, matching home root and baseline version required');
  if(!Array.isArray(input.rows)||!Array.isArray(input.unavailableMembers))throw Error('Current intake rows and unavailable-account list required');
  const rows=[...input.rows].sort((a,b)=>canonicalJSON(a).localeCompare(canonicalJSON(b)));
  const sourceChecks=input.sourceChecks??[];if(!Array.isArray(sourceChecks)||sourceChecks.length>100||sourceChecks.some(s=>!home.sources?.some((/** @type {any} */ r)=>r.id===s.id)||!['unchanged','changed','unverified','unavailable','out-of-scope'].includes(s.status)))throw Error('Current known source checks required');

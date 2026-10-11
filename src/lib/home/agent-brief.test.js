@@ -21,3 +21,9 @@ test('nested extras are excluded and provider attribution is retained',()=>{
  expect(b.home.equipment[0].provider.authorUserId).toBe('member');
  expect(b.home.equipment[0].fieldEvidence.model[0].contributionId).toBe('c');
 });
+
+test('source reconstruction prevents a redundant start-from-nothing layout interview',()=>{
+ const reconstruction={schemaVersion:1,status:'draft-needs-review',units:'feet',source:{sha256:'a'.repeat(64)},levels:[{id:'main',elevationFeet:null}],rooms:[{id:'living',name:'Living',level:'main',polygon:[[0,0],[10,0],[10,10],[0,10]],sourcePage:2,sourceSheet:'A-1',heightFeet:null}]};
+ const b=buildAgentBrief({...home,reconstruction});expect(b.questions.some(q=>q.kind==='layout')).toBe(false);expect(b.home.reconstructionAvailable).toBe(true);expect(b.home.reconstructionRoomCount).toBe(1);expect(b.home.acceptedPlanAvailable).toBe(false);
+ const invalid=buildAgentBrief({...home,reconstruction:{rooms:[{}]}});expect(invalid.questions.some(q=>q.kind==='layout')).toBe(true);
+});

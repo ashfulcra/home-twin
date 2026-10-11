@@ -11,3 +11,12 @@ Public examples and tests stay synthetic; actual plans and household facts belon
 ## Large architectural sources
 
 Keep the complete original in the private Fulcra evidence folder and verify its checksum by readback. The hosted source uploader has a3MiB bounded attachment limit; do not silently raise it or label derived images as originals. A connected agent can inventory/render a large PDF locally, archive the complete original through Fulcra CLI, and publish bounded, checksum-linked page previews plus a reconstruction report for the dashboard. Preserve page numbers, sheet IDs, written dimensions, trace residuals and coordinate orientation. A successful original archive does not establish later periodic source-audit coverage for that large file; record that limitation explicitly.
+
+## Maintaining an independent folder
+Use the same explicit root for intake and guarded publication:
+
+```sh
+node scripts/home-maintainer.mjs cycle example-home /private/home-state --root /Example_Residence/twin --check-sources
+node scripts/home-maintainer.mjs publish example-home /private/home-state --root /Example_Residence/twin
+```
+The state directory must remain outside the repository. Explicit project roots have one bounded folder name followed by `/twin`; traversal and nested arbitrary vault roots are rejected. Defaults still select `/shared/home-twin/HOME_ID`; existing `/home/twin` users retain `--legacy-root`. Source checks remain restricted to the selected home's `sources` folder. The authenticated maintainer and snapshot home ID must match. Resolve pending writes before changing roots or publishing fresh work. Oversized archived blueprints are not covered by the bounded 10 MiB periodic source audit; preserve their original checksum and separately record archive verification.

@@ -19,3 +19,5 @@ test('content change changes cycle identity but equivalent incoming order does n
  const note={id:'11111111-1111-4111-8111-111111111111',homeId:'example',kind:'note',authorUserId:'owner',text:'A'};const second={...note,id:'22222222-2222-4222-8222-222222222222',text:'B'};
  const a=buildMaintainerCycle({...input,rows:[note,second]});const b=buildMaintainerCycle({...input,rows:[second,note]});expect(a.cycleId).toBe(b.cycleId);expect(buildMaintainerCycle({...input,rows:[note]}).cycleId).not.toBe(a.cycleId);
 });
+
+test('independent project cycles retain their explicit root in stable work',()=>{const c=buildMaintainerCycle({...input,root:'/Example_Residence/twin'});expect(c.root).toBe('/Example_Residence/twin');expect(c.material.root).toBe(c.root);});

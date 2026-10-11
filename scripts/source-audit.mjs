@@ -1,10 +1,11 @@
+import {validHomeRoot} from '../src/lib/home/home-root.js';
 import {createHash} from 'node:crypto';
 import {sourceLocation} from '../src/lib/server/source-location.js';
 /** Bounded original-source hashing; never retain raw bytes or treat failures as unchanged.
  * @param {any} home @param {string} root @param {(path:string)=>Promise<Response>} get
  * @param {{maxBytes?:number}} options */
 export async function auditHomeSources(home,root,get,options={}){
- if(!home||!(/^[a-z0-9][a-z0-9-]{0,79}$/).test(home.id)||!home.ownerUserId||!['/home/twin',`/shared/home-twin/${home.id}`].includes(root))throw Error('Intended home owner and root required');
+ if(!home||!(/^[a-z0-9][a-z0-9-]{0,79}$/).test(home.id)||!home.ownerUserId||!validHomeRoot(home.id,root))throw Error('Intended home owner and root required');
  const refs=home.sources??[];if(!Array.isArray(refs)||refs.length>100)throw Error('Source audit supports up to 100 referenced originals');
  const maxBytes=options.maxBytes??10*1024*1024;if(!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>10*1024*1024)throw Error('Invalid source byte limit');
  /** @type {any[]} */ const checks=[];/** @type {any[]} */ const receipts=[];const ids=new Set();
