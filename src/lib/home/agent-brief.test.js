@@ -27,3 +27,161 @@ test('source reconstruction prevents a redundant start-from-nothing layout inter
  const b=buildAgentBrief({...home,reconstruction});expect(b.questions.some(q=>q.kind==='layout')).toBe(false);expect(b.home.reconstructionAvailable).toBe(true);expect(b.home.reconstructionRoomCount).toBe(1);expect(b.home.acceptedPlanAvailable).toBe(false);
  const invalid=buildAgentBrief({...home,reconstruction:{rooms:[{}]}});expect(invalid.questions.some(q=>q.kind==='layout')).toBe(true);
 });
+
+/** Synthetic building: removal of model context would prevent an agent answering room/opening questions. @returns {any} */
+const architecture = () => ({
+  schemaVersion: 1,
+  units: 'feet',
+  levels: [{ id: 'main', label: 'Main', elevationFeet: 0, heightFeet: 10 }],
+  rooms: [
+    {
+      id: 'living',
+      name: 'Living',
+      level: 'main',
+      polygon: [
+        [0, 0],
+        [20, 0],
+        [20, 15],
+        [0, 15]
+      ],
+      heightFeet: 10,
+      basis: { type: 'representative', assumptionIds: ['height'] }
+    }
+  ],
+  walls: [
+    {
+      id: 'south',
+      roomId: 'living',
+      level: 'main',
+      start: [0, 15],
+      end: [20, 15],
+      heightFeet: 10,
+      thicknessFeet: 0.5,
+      openings: [
+        {
+          id: 'door',
+          kind: 'door',
+          offsetFeet: 4,
+          widthFeet: 3,
+          sillFeet: 0,
+          heightFeet: 7,
+          basis: 'estimated'
+        }
+      ]
+    }
+  ],
+  features: [
+    {
+      id: 'fireplace',
+      roomId: 'living',
+      level: 'main',
+      name: 'Fireplace',
+      kind: 'fireplace',
+      position: [10, 0],
+      size: [4, 2, 5],
+      sourcePage: 7,
+      details: { sourceEvidence: 'Fireplace shown in room elevation', product: 'unknown' }
+    }
+  ],
+  assumptions: [{ id: 'height', subject: 'Ceiling', value: 10, reason: 'Representative height' }],
+  excludedFeatures: [
+    { id: 'unbuilt-stair', reason: 'Household reported not built', sourcePages: [2] }
+  ],
+  sourceSpecifications: [
+    {
+      subject: 'Ceiling',
+      sourcePage: 8,
+      specification: 'Coffered ceiling drawn',
+      installedStatus: 'unverified'
+    }
+  ]
+});
+test('portable architectural context answers room and aperture questions without upgrading estimates', () => {
+  const m = architecture();
+  const before = JSON.stringify(m);
+  const b = buildAgentBrief({ ...home, reconstruction: { buildingModel: m } }, { role: 'viewer' });
+  const a = b.home.architecture;
+  expect(a.status).toBe('available');
+  expect(a.units).toBe('feet');
+  expect(a.rooms[0].polygon[2]).toEqual([20, 15]);
+  expect(a.rooms[0].sourcePage).toBeNull();
+  expect(a.rooms[0].basis.assumptionIds).toEqual(['height']);
+  expect(a.walls[0].openings[0]).toMatchObject({
+    kind: 'door',
+    offsetFeet: 4,
+    widthFeet: 3,
+    basis: { note: 'estimated' }
+  });
+  expect(a.features[0]).toMatchObject({
+    roomId: 'living',
+    sourcePage: 7,
+    details: { product: 'unknown' }
+  });
+  expect(a.sourceSpecifications[0].installedStatus).toBe('unverified');
+  expect(a.assumptions[0].value).toBe(10);
+  expect(a.excludedFeatures[0].id).toBe('unbuilt-stair');
+  expect(b.questions.some((q) => q.kind === 'layout')).toBe(false);
+  expect(b.permissions.canPublishAcceptedSnapshot).toBe(false);
+  expect(JSON.stringify(m)).toBe(before);
+});
+test('architectural handoff excludes arbitrary nested extras instead of serializing them', () => {
+  const m = architecture();
+  m.apiKey = 'architecture-secret';
+  m.levels[0].secret = 'architecture-secret';
+  m.rooms[0].basis.extra = { token: 'architecture-secret' };
+  m.walls[0].openings[0].secret = 'architecture-secret';
+  m.features[0].details.apiKey = 'architecture-secret';
+  m.features[0].details.sourceSpecification = { token: 'architecture-secret' };
+  m.assumptions[0].value = { apiKey: 'architecture-secret' };
+  m.excludedFeatures[0].token = 'architecture-secret';
+  m.sourceSpecifications[0].apiKey = 'architecture-secret';
+  const a = buildAgentBrief({ ...home, reconstruction: { buildingModel: m } }).home.architecture;
+  expect(a.status).toBe('available');
+  expect(JSON.stringify(a)).not.toContain('architecture-secret');
+  expect(a.features[0].details.sourceEvidence).toContain('elevation');
+  expect(a.assumptions[0].value).toBeNull();
+});
+test('invalid and absent architecture stay explicit while home knowledge remains available', () => {
+  const m = architecture();
+  m.walls[0].openings[0].widthFeet = 40;
+  const b = buildAgentBrief({ ...home, reconstruction: { buildingModel: m } });
+  expect(b.home.architecture.status).toBe('invalid');
+  expect(b.home.equipment[0].name).toBe('Heating system');
+  expect(b.questions.some((q) => q.kind === 'layout')).toBe(true);
+  expect(buildAgentBrief(home).home.architecture.status).toBe('not-recorded');
+});
+test('minimal valid architecture without optional collections still exports its rooms', () => {
+  const m = architecture();
+  delete m.assumptions;
+  delete m.features;
+  delete m.walls;
+  delete m.excludedFeatures;
+  delete m.sourceSpecifications;
+  const a = buildAgentBrief({ ...home, reconstruction: { buildingModel: m } }).home.architecture;
+  expect(a.status).toBe('available');
+  expect(a.rooms[0].name).toBe('Living');
+  expect(a.assumptions).toEqual([]);
+  expect(a.walls).toEqual([]);
+});
+test('an oversized architecture directs the agent to the current home rather than silently dropping model context', () => {
+  const m = architecture();
+  m.features = Array.from({ length: 700 }, (_, i) => ({
+    ...m.features[0],
+    id: `feature-${i}`,
+    details: { sourceEvidence: 'x'.repeat(4000) }
+  }));
+  const b = buildAgentBrief({ ...home, reconstruction: { buildingModel: m } });
+  expect(b.home.architecture.status).toBe('size-limited');
+  expect(b.home.architecture.counts.features).toBe(700);
+  expect(b.questions.some((q) => q.kind === 'layout')).toBe(false);
+});
+test('malformed supplemental rows cannot hide otherwise valid architectural and equipment context',()=>{
+ const m=architecture();m.sourceSpecifications.unshift(null,'not a specification');m.excludedFeatures.unshift(null);
+ const b=buildAgentBrief({...home,reconstruction:{buildingModel:m}});
+ expect(b.home.architecture.status).toBe('available');expect(b.home.architecture.sourceSpecifications).toHaveLength(1);expect(b.home.architecture.excludedFeatures[0].id).toBe('unbuilt-stair');expect(b.home.equipment).toHaveLength(1);
+});
+test('architectural room roles and specification sheets survive without arbitrary metadata',()=>{
+ const m=architecture();m.rooms[0].geometryRole='nested-closet';m.sourceSpecifications[0].sourceSheet='A2';
+ const a=buildAgentBrief({...home,reconstruction:{buildingModel:m}}).home.architecture;
+ expect(a.rooms[0].geometryRole).toBe('nested-closet');expect(a.sourceSpecifications[0].sourceSheet).toBe('A2');
+});
