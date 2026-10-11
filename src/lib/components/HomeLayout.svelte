@@ -1,4 +1,5 @@
 <script lang="ts">
+ import HomeReconstruction from './HomeReconstruction.svelte';
  import HomeLayoutSchematic from './HomeLayoutSchematic.svelte';
  import {onMount} from 'svelte';
  import {starterPlan,interviewPlan,parseLength,validatePlan,planWarnings} from '$lib/home/layout.js';
@@ -15,6 +16,7 @@
  function addRoom(){plan.rooms.push({id:'room-'+crypto.randomUUID(),name:'New room',x:bounds.x+bounds.w,y:0,w:12,h:12,accuracy:'estimated',measurements:{}});select(plan.rooms.at(-1).id);}
  onMount(load);
 </script>
+{#if home.reconstruction}<HomeReconstruction model={home.reconstruction}/>{/if}
 <section><h2>Start a correctable floor plan</h2><p>Useful first, precise later. These examples and interview positions are estimates, with north at the top. Saved drafts preserve the accepted house model.</p>
  {#if role==='viewer'}<p>Your household has given you view access.</p>{:else}<fieldset disabled={saving||!!pending}><div class="starters"><button onclick={()=>use(starterPlan('simple'))}>Simple rectangle</button><button onclick={()=>use(starterPlan('hall'))}>Rooms around a hall</button><button onclick={()=>use(starterPlan('lshape'))}>L-shaped starting point</button></div>
  <details><summary>Build from a layout interview</summary><label>What are the familiar room names? <textarea bind:value={names} placeholder="Kitchen&#10;Living Room&#10;Office"></textarea></label><label>Which rooms are adjacent? <textarea bind:value={adjacency} placeholder="Kitchen -> Living Room&#10;Living Room -> Office"></textarea></label><p>Use A → B as <code>A -&gt; B</code>. Pairs start beside each other toward the east; correct directions below. Unknown dimensions start at 14ft.</p><button onclick={interview}>Build rough plan from answers</button></details></fieldset>{/if}

@@ -1,4 +1,5 @@
 <script>
+  import {env} from '$env/dynamic/public';
   import { user } from '$lib/user';
   import { onMount } from 'svelte';
   import LoginDeviceFlow from '$lib/components/LoginDeviceFlow.svelte';
@@ -9,7 +10,7 @@
 </script>
 
 <svelte:head>
-  <title>Home Twin</title>
+  <title>{env.PUBLIC_APP_NAME || 'Home Twin'}</title>
 </svelte:head>
 
 {#if !$user.authenticated}
