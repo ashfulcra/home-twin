@@ -4,6 +4,8 @@ A Fulcra-authenticated home dashboard and agent workflow for reducing the work o
 
 The UI supports private [source-file intake](docs/source-intake.md), guided setup, source-linked equipment and schedules, household contributions, conflict review, and an optional request for a connected home agent. A saved request does not launch an agent. Advanced chat and local captures/device integrations are separate add-ons.
 
+Use [independent instances](docs/independent-instances.md) to create separate homes with their own deployment, private workspace and branding. Source-derived multi-floor polygon drafts can retain blueprint provenance without being reduced to rectangular room extents.
+
 ## Run locally
 
 Use a Node version supported by the deployment platform (20, 22 or 24). Copy `.env.example` to `.env`, retain the official Fulcra authentication settings, then:
