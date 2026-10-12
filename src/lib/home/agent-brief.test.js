@@ -1,8 +1,47 @@
 import {test,expect} from 'vitest';
 import {buildAgentBrief} from './agent-brief.js';
+import {assemblyBriefFixture} from './assembly-brief-fixture.js';
 const home={schemaVersion:1,revision:1,id:'example-home',name:'Example home',rooms:[],equipment:[{id:'heat',name:'Heating system',inventoryStatus:'needs-details',model:null,sourceIds:['intake'],vendorToken:'do-not-export'}],contacts:[],history:[],schedules:[],sources:[{id:'intake',title:'Intake',path:'/shared/home-twin/example-home/sources/intake.json',verifiedAt:null}],notes:[],plan:null};
 const owner='00000000-0000-4000-8000-000000000001';
 const member='00000000-0000-4000-8000-000000000002';
+const ownerOptions={role:'maintainer',ownerUserId:owner,userId:owner,root:'/home/twin'};
+test('a verified owner source reference supplies geometry and uncertainty without accepting or renaming rooms',()=>{
+ const source=assemblyBriefFixture();const h={...home,ownerUserId:owner};const before=JSON.stringify(h);
+ const b=buildAgentBrief(h,{...ownerOptions,assemblyReference:source});
+ expect(b.sourceReference.status).toBe('available');expect(b.sourceReference.acceptanceStatus).toBe('source-preview-needs-review');
+ expect(b.sourceReference.baselineCurrent).toBe(false);expect(b.sourceReference.model.homeBinding.canonicalFileVersion).toBe('source-v1');
+ expect(b.sourceReference.model.rooms[0]).toMatchObject({id:'upper:closet-a',nativeId:'closet-a',name:'Closet',floorElevationFeet:8,ceilingElevationFeet:16,ceilingProvisional:true,kind:null});
+ expect(b.sourceReference.model.walls[0].openings[0]).toMatchObject({offsetFeet:1,widthFeet:2,sillFeet:0,headFeet:7});
+ expect(b.sourceReference.model.rooms[0].polygon).toEqual([[0,0],[4,0],[4,4],[0,4]]);
+ expect(b.sourceReference.model.uncertainties).toEqual(['Ceiling needs confirmation.']);expect(b.sourceReference.model.mesh.sha256).toBe('c'.repeat(64));
+ expect(b.home.rooms).toEqual([]);expect(b.home.acceptedPlanAvailable).toBe(false);expect(b.home.reconstructionAvailable).toBe(false);
+ expect(b.questions.some(q=>q.kind==='layout')).toBe(false);expect(b.questions.some(q=>q.kind==='source-model-review')).toBe(true);
+ expect(JSON.stringify(h)).toBe(before);
+});
+test('source-reference extras and binary mesh are excluded from the private agent brief',()=>{
+ const source=assemblyBriefFixture();source.model.token='do-not-export';source.model.rooms[0].secret={token:'do-not-export'};source.model.walls[0].openings[0].token='do-not-export';source.model.mesh.apiKey='do-not-export';source.model.sourceReceipts[0].path='/private-unrelated';source.meshBytes=new Uint8Array([1,2,3]);
+ const b=buildAgentBrief({...home,ownerUserId:owner},{...ownerOptions,assemblyReference:source});
+ expect(b.sourceReference.status).toBe('available');expect(JSON.stringify(b.sourceReference)).not.toContain('do-not-export');expect(JSON.stringify(b.sourceReference)).not.toContain('/private-unrelated');expect(Object.hasOwn(b.sourceReference,'meshBytes')).toBe(false);
+});
+test('nonowners and mismatched source home identities do not acquire private reference context',()=>{
+ const source=assemblyBriefFixture();
+ for(const options of [{...ownerOptions,role:'viewer',userId:member},{...ownerOptions,role:'contributor',userId:member},{...ownerOptions,userId:member},{...ownerOptions,root:'/unrelated'}]){
+  const b=buildAgentBrief({...home,ownerUserId:owner},{...options,assemblyReference:source});expect(b.sourceReference.status).toBe('private-owner-only');expect(b.sourceReference.model).toBeUndefined();expect(b.sourceReference.downloadEndpoint).toBeUndefined();
+ }
+ source.model.homeBinding.homeId='other-home';const b=buildAgentBrief({...home,ownerUserId:owner},{...ownerOptions,assemblyReference:source});expect(b.sourceReference.status).toBe('unverified');expect(b.sourceReference.model).toBeUndefined();
+});
+test('source absence, unchecked access and unavailable access remain distinct capture states',()=>{
+ const h={...home,ownerUserId:owner};const absent=buildAgentBrief(h,{...ownerOptions,assemblyReference:null});
+ expect(absent.sourceReference.status).toBe('not-recorded');expect(absent.questions.some(q=>q.kind==='layout')).toBe(true);
+ for(const options of [ownerOptions,{...ownerOptions,assemblyReference:{status:'unverified'}}]){
+  const b=buildAgentBrief(h,options);expect(['not-checked','unverified']).toContain(b.sourceReference.status);expect(b.questions.some(q=>q.kind==='layout')).toBe(false);expect(b.questions.some(q=>q.kind==='source-access')).toBe(true);
+ }
+});
+test('oversized verified source context retains counts and a lookup action rather than a new-plan interview',()=>{
+ const source=assemblyBriefFixture();source.model.uncertainties=Array.from({length:300},()=> 'x'.repeat(2000));
+ const b=buildAgentBrief({...home,ownerUserId:owner},{...ownerOptions,assemblyReference:source});
+ expect(b.sourceReference.status).toBe('size-limited');expect(b.sourceReference.counts).toMatchObject({rooms:1,walls:1,openings:1});expect(b.sourceReference.model).toBeUndefined();expect(b.sourceReference.previewDigest).toBe('a'.repeat(64));expect(b.questions.some(q=>q.kind==='layout')).toBe(false);
+});
 test('a contributor bootstrap pairs with the resolved owner and preserves the same home',()=>{
  const b=buildAgentBrief(home,{role:'contributor',ownerUserId:owner,userId:member,root:'/shared/home-twin/example-home'});
  expect(b.gettingStarted.status).toBe('ready');

@@ -2,6 +2,7 @@ import {validateReconstruction} from './reconstruction.js';
 import {buildArchitectureBrief} from './architecture-brief.js';
 import {buildAgentStart} from './agent-start.js';
 import {projectHome} from './projection.js';
+import {buildAssemblyBrief} from './assembly-brief.js';
 /** @param {any} value */
 const strings=value=>Array.isArray(value)?value.filter(v=>typeof v==='string'):[];
 /** Export attribution, not arbitrary contribution properties or credential fields.
@@ -19,6 +20,7 @@ export function buildAgentBrief(home,options={}){
  let reconstruction=null;try{if(home.reconstruction)reconstruction=validateReconstruction(home.reconstruction);}catch{/* Invalid drafts do not suppress capture questions. */}
  const architecture=buildArchitectureBrief(home.reconstruction?.buildingModel);
  const root=options.root??`/shared/home-twin/${home.id}`;
+ const sourceReference=buildAssemblyBrief(home,{...options,role,root});
  /** @type {any[]} */const questions=[];
  const equipment=projected.equipment.map((/** @type {any} */ e)=>{
   if(!e.model||e.inventoryStatus==='needs-details')questions.push({kind:'equipment-details',entityId:e.id,prompt:`For ${e.name}, can you identify the actual unit and its model? A readable label photo is useful; a system placeholder is not a confirmed device.`,capture:'equipment-label-photo'});
@@ -30,8 +32,12 @@ export function buildAgentBrief(home,options={}){
    provider:e.provider?{id:e.provider.id,name:e.provider.name,trade:e.provider.trade??null,phone:e.provider.phone??null,email:e.provider.email??null,...attribution(e.provider)}:null};
  });
  if(!equipment.length)questions.push({kind:'systems',prompt:'Which systems or items do you want to remember first? Start with equipment, care contacts or one recurring household task; exact layout is optional.',capture:'interview'});
- if(!home.plan&&!reconstruction&&!['available','size-limited'].includes(architecture.status))questions.push({kind:'layout',prompt:'If a layout would help, start with familiar room names and which rooms connect. A rough sketch, starter plan or scan can be refined later; accurate dimensions are optional.',capture:'room-adjacency-or-rough-plan'});
- return {schema:'home-twin-agent-brief/1',generatedAt,scope:'Accepted snapshot only; read and reconcile current contributions before publishing.',
+ const hasSource=['available','size-limited'].includes(sourceReference.status);
+ const sourceUnknown=['not-checked','unverified'].includes(sourceReference.status);
+ if(!home.plan&&!reconstruction&&!['available','size-limited'].includes(architecture.status)&&!hasSource&&!sourceUnknown)questions.push({kind:'layout',prompt:'If a layout would help, start with familiar room names and which rooms connect. A rough sketch, starter plan or scan can be refined later; accurate dimensions are optional.',capture:'room-adjacency-or-rough-plan'});
+ if(hasSource)questions.push({kind:'source-model-review',prompt:'Inspect the existing source model and its uncertainty before requesting another layout. Ask only for the specific identity, measurement or capture needed for the next correction.',capture:'targeted-source-refinement'});
+ if(sourceUnknown)questions.push({kind:'source-access',prompt:'Verify whether the current owner has an imported source model before starting a new layout interview. Unavailable or unchecked evidence does not mean no model exists.',capture:'verify-existing-source-access'});
+ return {schema:'home-twin-agent-brief/1',generatedAt,scope:'Accepted snapshot with a separately labelled private source reference when verified; read current evidence and contributions before decisions or publication.',sourceReference,
   gettingStarted:buildAgentStart(home,{...options,role,root}),
   permissions:{role,canPublishAcceptedSnapshot:role==='maintainer',requiresFreshFulcraCheck:true},
   home:{id:home.id,name:home.name,revision:home.revision,timezone:home.timezone??null,rooms:(home.rooms??[]).map((/** @type {any} */ r)=>({id:r.id,name:r.name,accuracy:r.accuracy??'not-recorded'})),equipment,acceptedPlanAvailable:!!home.plan,reconstructionAvailable:!!reconstruction,reconstructionRoomCount:reconstruction?.rooms.length??0,
