@@ -9,7 +9,7 @@ async function fixture(){
  const home={schemaVersion:1,id:'example',name:'Example',ownerUserId:owner,revision:6,members:[{userId:member,role:'contributor'}],notes:[{id:'note',text:'New household fact'}],privateNote:'never export'};
  const context={userId:owner,root:'/Example/twin',fileVersion:'v6',rawHome:JSON.stringify(home)};
  const packet=await buildHouseholdRefresh(home,context), input={principalId:owner,home,rawHome:context.rawHome,fileVersion:'v6'};
- const shares=[{datashare_id:'grant-1',datashare_name:'home-twin:example:review',fulcra_user_name:owner,share_all_data:false,time_start:null,time_end:null,fulcra_data_types:['file:'+packet.publicationPath],permissions:[{allowed_fulcra_userid:member}],group_permissions:[]}];
+ const shares=[{datashare_id:'grant-1',datashare_name:'home-twin:example:review',sharing_fulcra_userid:owner,share_all_data:false,time_start:null,time_end:null,fulcra_data_types:['file:'+packet.publicationPath],permissions:[{allowed_fulcra_userid:member}],group_permissions:[]}];
  const prior=JSON.stringify({...packet.publication,revision:5,notes:[]}), files=new Map([[packet.publicationPath,prior],[context.root+'/home.json',context.rawHome]]);
  /** @type {string[]} */
  const calls=[];

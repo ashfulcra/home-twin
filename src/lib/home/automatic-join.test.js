@@ -7,7 +7,7 @@ const target={homeId:'example',ownerUserId:owner};
 function setup(){const dir=mkdtempSync(join(tmpdir(),'auto-join-'));chmodSync(dir,0o700);const files=new Map();
  /** @type {any[]} */
  const shares=[];let creates=0;
- /** @type {any} */const t={principal:async()=>member,requests:async()=>[],readFile:async (/** @type {string} */p)=>files.get(p)??null,writeFile:async(/** @type {string} */p,/** @type {string} */v)=>files.set(p,v),listShares:async()=>shares,createShare:async (/** @type {any} */b)=>{creates++;shares.push({...b,datashare_id:'44444444-4444-4444-8444-444444444444'});}};
+ /** @type {any} */const t={principal:async()=>member,requests:async()=>[],readFile:async (/** @type {string} */p)=>files.get(p)??null,writeFile:async(/** @type {string} */p,/** @type {string} */v)=>files.set(p,v),listShares:async()=>shares,createShare:async (/** @type {any} */b)=>{creates++;const {fulcra_user_name,...scope}=b;shares.push({...scope,sharing_fulcra_userid:fulcra_user_name,sharing_fulcra_user_name:'Example Requester',datashare_id:'44444444-4444-4444-8444-444444444444'});}};
  return {dir,t,files,shares,creates:()=>creates};
 }
 test('login persists and shares one exact own request, repeat reuses its original time and identity',async()=>{
@@ -26,4 +26,9 @@ test('existing manual request is reused rather than making an extra inbox row',a
 });
 test('owner self request and foreign home state fail before any upload or share',async()=>{
  const f=setup();try{f.t.principal=async()=>owner;await expect(runAutomaticJoin(f.dir,target,f.t)).rejects.toThrow(/owner/);expect(f.files.size).toBe(0);expect(f.creates()).toBe(0);f.t.principal=async()=>member;await runAutomaticJoin(f.dir,target,f.t);await expect(runAutomaticJoin(f.dir,{...target,homeId:'other'},f.t)).rejects.toThrow(/scope/);}finally{rmSync(f.dir,{recursive:true});}
+});
+
+test('confirmed real-shaped receipt recovers an in-flight grant without sending a second request or share',async()=>{
+ const f=setup();const list=f.t.listShares;let visible=false;f.t.listShares=async()=>visible?list():[];
+ try{await expect(runAutomaticJoin(f.dir,target,f.t)).rejects.toThrow(/uncertain/);expect(f.creates()).toBe(1);visible=true;const result=await runAutomaticJoin(f.dir,target,f.t);expect(result.status).toBe('pending-approval');expect(f.creates()).toBe(1);expect(f.files.size).toBe(1);}finally{rmSync(f.dir,{recursive:true});}
 });

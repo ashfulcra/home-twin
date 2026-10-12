@@ -39,7 +39,7 @@ export function validateRefreshShares(shares,packet){
    return path===packet.publicationPath||packet.publicationPath.startsWith(path+'/');
   });
   if(!related)continue;
-  if(typeof s.datashare_id!=='string'||!s.datashare_id||seen.has(s.datashare_id)||s.fulcra_user_name!==packet.ownerUserId||s.time_start!==null||s.time_end!==null||canonicalJSON(s.fulcra_data_types)!==canonicalJSON(['file:'+packet.publicationPath])||!Array.isArray(s.group_permissions)||s.group_permissions.length||!Array.isArray(s.permissions)||!s.permissions.length)throw Error('Household grant scope, history, groups or timing differs');
+  if(typeof s.datashare_id!=='string'||!s.datashare_id||seen.has(s.datashare_id)||s.sharing_fulcra_userid!==packet.ownerUserId||s.time_start!==null||s.time_end!==null||canonicalJSON(s.fulcra_data_types)!==canonicalJSON(['file:'+packet.publicationPath])||!Array.isArray(s.group_permissions)||s.group_permissions.length||!Array.isArray(s.permissions)||!s.permissions.length)throw Error('Household grant scope, history, groups or timing differs');
   const recipients=s.permissions.map((/** @type {any} */p)=>p?.allowed_fulcra_userid);
   if(recipients.some((/** @type {any} */id)=>!members.has(id))||new Set(recipients).size!==recipients.length)throw Error('Outgoing household access has an unapproved recipient');
   seen.add(s.datashare_id);recipients.forEach((/** @type {any} */id)=>covered.add(id));receipts.push({grantId:s.datashare_id,recipients:recipients.sort()});

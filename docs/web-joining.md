@@ -1,6 +1,6 @@
 # Joining an existing home
 
-Signing in to a named home submits one access request, then shows a pending page. The login screen discloses that only the access request is shared with that home's owner. Signing in never creates another home or grants access. Pending callers receive no home records or agent onboarding instructions.
+Signing in to a named home submits one access request, then shows a pending page. The login screen discloses that only the access request is shared with that home's owner. Signing in never creates another home or grants access. Confirmed requests say that a request to join the home has been sent. Pending callers receive no home records. An optional copyable prompt connects an agent to the applicant’s own Fulcra account and asks it to check every 30 minutes for approval, if scheduling is available; the agent reports a confirmed approval once and stops that check. Home contribution, original-file sharing and mesh setup remain separate after approval.
 
 The owner opens Household, reads a request, chooses Viewer or Contributor, reviews the exact curated household records and confirms the recipient and scope. **Approve access** saves the content-bound decision and applies it through the persistent access service. The owner does not need an AI agent. This changes canonical membership, preserves earlier snapshots, publishes the reviewed household projection and creates an exact current-file-only share. Original documents, private vaults, other homes, file history, return contributions and agent meshes are excluded. A small separate outcome file tells the applicant the decision. Declining shares only that outcome, without home access.
 
@@ -23,3 +23,7 @@ The service must be supervised across restarts. Do not delete a live lock or exp
 ## Verification
 
 Run the full unit suite, type check and build. Exercise pending and approved UI branches, anonymous/member denial, owner review/application, repeated login, reload recovery, stale baselines, concurrent locking and lost write/share responses. Verify TLS relay and current-owner endpoints on the actual deployment. A synthetic transport can test journal recovery without granting private home access; document real second-account read/contribute/revoke testing separately when that intended account is available.
+
+## Outgoing receipt identity
+
+Fulcra accepts fulcra_user_name in the share creation body, but its outgoing receipt identifies the sharing account with sharing_fulcra_userid. Exact receipt checks use that authenticated ID, never a display name or an echoed request field. Recipient, current-file path, timing, history and group restrictions still must match exactly. Recovery reads the existing receipt before any mutation; it does not recreate an already-sent request or grant.

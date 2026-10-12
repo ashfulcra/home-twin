@@ -22,3 +22,9 @@ test('resume preview reveals the saved decision recipient to the owner only',asy
  const {GET}=await import('../../routes/api/home/admission/+server.js');
  await expect(GET({...event(),url:new URL('https://example.test/?reviewCode=33333333-3333-4333-8333-333333333333-'+'a'.repeat(64))})).rejects.toMatchObject({status:403});
 });
+
+test('confirmed pending requester receives only their own exact request context and optional approval-check prompt',async()=>{
+ const deployment={...target,mode:'existing',name:'Example Home',sharedRoot:'/shared/home-twin/example'};m.principal.mockResolvedValue({deployment,userId:user});
+ m.rpc.mockResolvedValue({status:'pending-approval',code:'example:'+user+':33333333-3333-4333-8333-333333333333:'+ 'a'.repeat(64)});
+ const body=await(await join(event())).json();expect(body.agentStart.context).toMatchObject({userId:user,ownerUserId:target.ownerUserId,homeId:'example',requestId:'33333333-3333-4333-8333-333333333333'});expect(body.agentStart.context).not.toHaveProperty('role');expect(body.agentStart.requestStatus).toBe('sent');expect(body).not.toHaveProperty('home');
+});
