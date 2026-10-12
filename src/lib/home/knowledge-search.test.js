@@ -9,3 +9,21 @@ describe('home knowledge finder',()=>{
  it('finds standalone providers using the existing trade format',()=>{const r=searchHomeKnowledge({...home,equipment:[],history:[],schedules:[],contacts:[{id:'plumber',name:'Example Services',trade:'Plumbing'}]},'plumbing');expect(r).toHaveLength(1);expect(r[0].detail).toBe('Plumbing');});
  it('does not retain results from a previous home',()=>{expect(searchHomeKnowledge({id:'other',asOf:home.asOf,equipment:[],contacts:[],history:[],schedules:[],sources:[]},'furnace')).toEqual([]);});
 });
+
+it('retrieves accepted equipment care notes without converting their recording date to service history',()=>{
+ const h={...home,notes:[{id:'care-note',homeId:'synthetic',kind:'note',entityId:'heat',text:'Example-cell battery reference; lifetime depends on use.',recordedAt:'2026-10-01T12:00:00Z',authorUserId:'member',sourceIds:['invoice'],performedAt:'2026-10-01',dueAt:'2027-01-01',secret:'NEVER EXPORT'}]};
+ const rows=searchHomeKnowledge(h,'example-cell furnace');
+ expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({kind:'note',id:'care-note',entityId:'heat',detail:'Example-cell battery reference; lifetime depends on use.',recordedAt:'2026-10-01T12:00:00Z',authorUserId:'member',sources:[{id:'invoice',title:'Example invoice'}]});
+ expect(rows[0].performedAt).toBeUndefined();expect(rows[0].dueAt).toBeUndefined();expect(rows[0].lastServiceAt).toBeUndefined();expect(JSON.stringify(rows)).not.toContain('NEVER EXPORT');
+ expect(searchHomeKnowledge(h,'furnace')[0].lastServiceAt).toBe('2026-09-10');
+});
+it('excludes foreign or held note rows and private ledgers from note discovery',()=>{
+ const h={...home,notes:[{id:'foreign',homeId:'another',kind:'note',text:'Hidden foreignword'},{id:'held',homeId:'synthetic',kind:'geometry',text:'Hidden heldword'},{id:'valid',homeId:'synthetic',kind:'note',text:'Plain accepted note',privateText:'Hidden privateword'}],review:[{text:'Hidden reviewword'}],contributionEvidence:[{text:'Hidden journalword'}]};
+ for(const q of ['foreignword','heldword','privateword','reviewword','journalword'])expect(searchHomeKnowledge(h,q)).toEqual([]);
+ expect(searchHomeKnowledge(h,'plain accepted')).toMatchObject([{kind:'note',id:'valid',detail:'Plain accepted note'}]);
+ expect(searchHomeKnowledge({...home,id:'other',notes:[]},'plain accepted')).toEqual([]);
+});
+it('does not choose the first of conflicting duplicate note identities',()=>{
+ const h={...home,notes:[{id:'duplicate',text:'Conflicting firstvalue'},{id:'duplicate',text:'Conflicting secondvalue'},{id:'safe',text:'Unrelated safevalue'}]};
+ expect(searchHomeKnowledge(h,'firstvalue')).toEqual([]);expect(searchHomeKnowledge(h,'secondvalue')).toEqual([]);expect(searchHomeKnowledge(h,'safevalue')).toHaveLength(1);
+});

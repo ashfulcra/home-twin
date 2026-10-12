@@ -1,12 +1,15 @@
 <script lang="ts">
  import {searchHomeKnowledge} from '$lib/home/knowledge-search.js';
+ import {projectHomeNotes} from '$lib/home/home-notes.js';
  let {home,onEquipment}:{home:any,onEquipment:(id:string)=>void}=$props();
  let query=$state('');
  let results=$derived(searchHomeKnowledge(home,query));
+ let notes=$derived(projectHomeNotes(home,home?.asOf??new Date().toISOString()));
 </script>
 <section>
  <h2>Find your home records</h2>
- <p>Look up equipment, providers, service history and schedules. Results come from this home’s current records; missing information stays unknown.</p>
+ <p>Look up equipment, providers, service history, schedules and household notes. Results come from this home’s current records; missing information stays unknown.</p>
+ {#if ['partial','size-limited','unverified'].includes(notes.status)}<p role="status">Some household notes could not be included in search. Review the original notes with your home maintainer; an empty search does not establish that a fact is missing.</p>{/if}
  <label>Search home knowledge <input type="search" bind:value={query} maxlength="120" placeholder="Equipment, provider, model or care task" /></label>
  {#if !query.trim()}<p class="muted">Try a system name like heating or plumbing, a provider’s name, or a model number.</p>{:else}
  <p role="status">{results.length} matching records{results.length===40?' (showing up to 40)':''}</p>
@@ -16,6 +19,7 @@
  {#if result.kind==='provider'}<p>Phone: {result.phone??'Not recorded'}</p><p>Email: {result.email??'Not recorded'}</p>{/if}
  {#if result.kind==='history'}<p>Recorded date: {result.performedAt??'Not recorded'} · status: {result.status}</p>{/if}
  {#if result.kind==='schedule'}<p>Next due: {result.dueAt??'Not recorded'} · {result.status}</p>{/if}
+ {#if result.kind==='note'}<p>Note recorded: {result.recordedAt??'Not recorded'}. This is not a service date.</p>{#if result.textTruncated}<p>Showing an excerpt. Read the original note with your home maintainer.</p>{/if}{/if}
  {#if result.entityId}<button onclick={()=>onEquipment(result.entityId)}>View equipment</button>{/if}
  {#each result.sources as source}<a href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">Read source: {source.title}</a>{/each}
  </article>{/each}

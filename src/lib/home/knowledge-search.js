@@ -1,4 +1,5 @@
 import {projectHome} from './projection.js';
+import {projectHomeNotes} from './home-notes.js';
 /** Read-only bounded lookup over the current authorized home projection.
  * @param {any} home @param {string} query @returns {any[]}
  */
@@ -18,5 +19,6 @@ export function searchHomeKnowledge(home,query){
  for(const c of view.contacts??[])records.push({kind:'provider',id:c.id,title:c.name,detail:c.trade??c.specialty??c.role??'',phone:c.phone??null,email:c.email??null,sources:sources(c),words:[c.name,c.trade,c.specialty,c.role,c.phone,c.email,...view.equipment.filter((/** @type {any} */ e)=>e.provider?.id===c.id).map(unitWords)].filter(Boolean).join(' ')});
  for(const h of view.history)records.push({kind:'history',id:h.id,entityId:h.equipmentId??null,title:h.title??h.summary??'Service record',detail:h.summary??'',performedAt:h.performedAt??null,status:h.status??'Not recorded',sources:sources(h),words:[h.title,h.summary,h.kind,h.status,h.performedAt,unitWords(unit(h.equipmentId))].filter(Boolean).join(' ')});
  for(const s of view.schedules)records.push({kind:'schedule',id:s.id,entityId:s.equipmentId??null,title:s.name,detail:s.description??'',dueAt:s.dueAt??null,status:s.state,sources:sources(s),words:[s.name,s.description,s.kind,s.state,unitWords(unit(s.equipmentId))].filter(Boolean).join(' ')});
+ for(const n of projectHomeNotes(view,asOf).items)records.push({kind:'note',id:n.id,entityId:n.entityId,title:'Household note',detail:n.text,recordedAt:n.recordedAt,authorUserId:n.authorUserId,textTruncated:n.textTruncated,sources:sources(n),words:[n.text,unitWords(unit(n.entityId))].filter(Boolean).join(' ')});
  return records.filter(r=>terms.every(t=>r.words.toLowerCase().includes(t))).slice(0,40).map(({words,...record})=>record);
 }
