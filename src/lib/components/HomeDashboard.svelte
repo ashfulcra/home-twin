@@ -27,11 +27,11 @@
  let role=$state('maintainer');
  let review: any[] = $state([]);
  let reviewContext: any[] = $state([]);
- let kind=$state('note');let entityId=$state('');let field=$state('serial');let value=$state('');let text=$state('');let contactId=$state('');let performedAt=$state('');let saveMessage=$state('');let saving=$state(false);let pending: any=$state(null);
+ let kind=$state('note');let entityId=$state('');let field=$state('serial');let value=$state('');let text=$state('');let noteSourceId=$state('');let contactId=$state('');let performedAt=$state('');let saveMessage=$state('');let saving=$state(false);let pending: any=$state(null);
  async function contribute(){
-  pending??={id:crypto.randomUUID(),homeId:home.id,baseRevision:home.revision,kind,...(entityId?{entityId}:{}),...(kind==='fact'?{field,value}:{text}),...(kind==='maintenance'?{performedAt,...(contactId?{contactId}:{})}: {})};
+  pending??={id:crypto.randomUUID(),homeId:home.id,baseRevision:home.revision,kind,...(entityId?{entityId}:{}),...(kind==='fact'?{field,value}:{text}),...(kind==='note'&&noteSourceId?{sourceIds:[noteSourceId]}:{}),...(kind==='maintenance'?{performedAt,...(contactId?{contactId}:{})}: {})};
   saving=true;saveMessage='';
-  try{const response=await fetch('/api/home/contributions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pending)});const result=await response.json();if(!response.ok){if(response.status===400)pending=null;throw new Error(result.message??'Save could not be confirmed. Retry this contribution.');}if(result.status==='pending-readback'){saveMessage='Submitted; storage confirmation is pending. Retry this same contribution.';}else{pending=null;text='';value='';saveMessage='Saved. Routine additions appear below; contradictions stay in review.';await load();}}catch(e){saveMessage=e instanceof Error?e.message:String(e);}finally{saving=false;}
+  try{const response=await fetch('/api/home/contributions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pending)});const result=await response.json();if(!response.ok){if(response.status===400)pending=null;throw new Error(result.message??'Save could not be confirmed. Retry this contribution.');}if(result.status==='pending-readback'){saveMessage='Submitted; storage confirmation is pending. Retry this same contribution.';}else{pending=null;text='';value='';noteSourceId='';saveMessage='Saved. Routine additions appear below; contradictions stay in review.';await load();}}catch(e){saveMessage=e instanceof Error?e.message:String(e);}finally{saving=false;}
  }
  let query = $state('');
  let section = $state('Overview');
@@ -42,7 +42,7 @@
   try {
    const response=await fetch('/api/home');
    if(!response.ok)throw new Error(response.status===401?'Please sign in again.':'Your home data is temporarily unavailable.');
-   const data=await response.json();deployment=data.deployment??null;join=data.join??null;home=data.home;if(sourceRequest&&(sourceRequest.homeId!==home?.id||sourceRequest.revision!==home?.revision))sourceRequest=null;followups=data.followups;role=data.role??'maintainer';review=data.review??[];reviewContext=data.reviewContext??[];loadState=data.status;if(firstLoad&&home?.reconstruction?.buildingModel)section='Layout';firstLoad=false;void refreshJoinInbox();
+   const data=await response.json();const previousHomeId=home?.id;deployment=data.deployment??null;join=data.join??null;home=data.home;if(previousHomeId!==home?.id&&!pending)noteSourceId='';if(sourceRequest&&(sourceRequest.homeId!==home?.id||sourceRequest.revision!==home?.revision))sourceRequest=null;followups=data.followups;role=data.role??'maintainer';review=data.review??[];reviewContext=data.reviewContext??[];loadState=data.status;if(firstLoad&&home?.reconstruction?.buildingModel)section='Layout';firstLoad=false;void refreshJoinInbox();
   }catch(e){loadState='error';errorMessage=e instanceof Error?e.message:String(e);}
  }
  onMount(()=>{void load();const focus=()=>{if(document.visibilityState==='visible')void refreshJoinInbox();};window.addEventListener('focus',focus);return()=>window.removeEventListener('focus',focus);});
@@ -90,6 +90,7 @@
      <fieldset disabled={saving||!!pending}><label>Type <select bind:value={kind}><option value="note">Note</option><option value="fact">Equipment fact</option><option value="maintenance">Completed maintenance</option><option value="geometry">Layout correction</option></select></label>
      <label>Equipment <select bind:value={entityId}><option value="">Whole home</option>{#each home.equipment as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
      {#if kind==='fact'}<label>Fact <select bind:value={field}>{#each ['model','manufacturer','serial','capacity','installedAt'] as name}<option value={name}>{name}</option>{/each}</select></label><label>Value <input bind:value required maxlength="500" /></label>{:else}<label>Description <textarea bind:value={text} required maxlength="10000"></textarea></label>{/if}
+     {#if kind==='note'}<label>Related original record (optional) <select bind:value={noteSourceId}><option value="">No original selected</option>{#each home.sources??[] as source}<option value={source.id}>{source.title??'Original record'}{!source.path&&!source.attachment?' · original not shared':''}</option>{/each}</select></label><p class="muted">Link this note to a home record. Check the original when you need to confirm its details.</p>{/if}
      {#if kind==='maintenance'}<label>Actual service date <input type="date" bind:value={performedAt} required /></label><label>Service provider (optional) <select bind:value={contactId}><option value="">Not recorded</option>{#each home.contacts??[] as c}<option value={c.id}>{c.name}</option>{/each}</select></label>{/if}</fieldset>
      <button disabled={saving} type="submit">{saving?'Saving…':pending?'Retry same contribution':'Save contribution'}</button>
     </form>{/if}<p role="status">{saveMessage}</p>

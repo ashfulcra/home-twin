@@ -1,6 +1,8 @@
 import {validAttachment} from './attachments.js';
 import {validRecurrence,validCompletionOccurrence} from './recurrence.js';
 import {canonicalJSON} from './canonical-json.js';
+/** Portable source identifiers are references, never paths or access grants. @param {any} ids */
+function validNoteSources(ids){return Array.isArray(ids)&&ids.length<=100&&new Set(ids).size===ids.length&&ids.every(id=>typeof id==='string'&&/^[a-z0-9][a-z0-9._-]{0,199}$/i.test(id));}
 /** Immutable contributions are reconciled against a baseline; conflicting new
  * values are held together rather than resolved by arrival order.
  * @param {any} baseline @param {any[]} contributions
@@ -26,7 +28,9 @@ export function reconcileContributions(baseline, contributions) {
   if(collisions.has(c.id)||decisions.length!==1||!['reject','accept-fact'].includes(decisions[0].action)||canonicalJSON(decisions[0].contribution)!==canonicalJSON(c)){review.push({contribution:c,reason:'review-decision-mismatch'});return false;}
   resolved.push(c.id);return false;
  });
- const rows=unresolved.sort((a,b)=>Number(a.kind==='task-completion')-Number(b.kind==='task-completion')|| (a.kind==='task-completion'&&b.kind==='task-completion'?String(a.occurrenceDueAt??'').localeCompare(String(b.occurrenceDueAt??'')):0));
+ /** Validated source additions precede dependent notes; completion ordering is retained. @param {any} row */
+ const priority=row=>row.kind==='evidence'?-1:Number(row.kind==='task-completion');
+ const rows=unresolved.sort((a,b)=>priority(a)-priority(b)|| (a.kind==='task-completion'&&b.kind==='task-completion'?String(a.occurrenceDueAt??'').localeCompare(String(b.occurrenceDueAt??'')):0));
  /** @param {any} c @param {string} reason */
  const hold=(c,reason)=>review.push({contribution:c,reason});
  const fields=new Set(['model','manufacturer','serial','capacity','installedAt']);
@@ -49,7 +53,9 @@ export function reconcileContributions(baseline, contributions) {
    if(entity){entity.sourceIds??=[];if(!entity.sourceIds.includes(sourceId))entity.sourceIds.push(sourceId);}
   }else if(c.kind==='note'){
    if(typeof c.text!=='string'||!c.text.trim()){hold(c,'empty-note');continue;}
-   if(!home.notes.some((/** @type {any} */ n)=>n.id===c.id))home.notes.push({...c});
+   if(c.sourceIds!==undefined&&!validNoteSources(c.sourceIds)){hold(c,'invalid-note-sources');continue;}
+   if((c.sourceIds??[]).some((/** @type {string} */ id)=>(home.sources??[]).filter((/** @type {any} */ source)=>source?.id===id).length!==1)){hold(c,'unknown-note-source');continue;}
+   if(!home.notes.some((/** @type {any} */ n)=>n.id===c.id))home.notes.push(structuredClone(c));
   }else if(c.kind==='fact'){
    if(!entity||!fields.has(c.field)||typeof c.value!=='string'||!c.value.trim()){hold(c,'unsupported-fact');continue;}
    const competing=rows.filter(other=>other.authorUserId&&other.kind==='fact'&&(other.baseRevision===undefined||other.baseRevision===home.revision)&&fields.has(other.field)&&typeof other.value==='string'&&other.value.trim()&&other.entityId===c.entityId&&other.field===c.field);
@@ -76,7 +82,7 @@ export function reconcileContributions(baseline, contributions) {
    if(!home.history.some((/** @type {any} */ h)=>h.id===c.id))home.history.push({...c,equipmentId:c.entityId,status:'completed',summary:c.text});
   }else{hold(c,'review-required');continue;}
   accepted.push(c.id);
-  if(!home.contributionEvidence.some((/** @type {any} */ e)=>e.id===c.id))home.contributionEvidence.push({...c});
+  if(!home.contributionEvidence.some((/** @type {any} */ e)=>e.id===c.id))home.contributionEvidence.push(structuredClone(c));
  }
  return {home,accepted,review,resolved};
 }
@@ -93,6 +99,7 @@ export function validateContribution(input) {
   if(input[field]!==undefined){if(typeof input[field]!=='string'||input[field].length>(field==='text'?10000:500))throw new Error('Contribution is too long or invalid');result[field]=input[field].trim();}
  }
  if(['note','geometry','maintenance','task-completion'].includes(input.kind)&&!result.text)throw new Error('Add a description');
+ if(input.sourceIds!==undefined){if(input.kind!=='note'||!validNoteSources(input.sourceIds))throw new Error('Choose up to 100 distinct source IDs for a note; paths and URLs are not source IDs');result.sourceIds=[...input.sourceIds];}
  if(input.kind==='fact'&&(!result.entityId||!['model','manufacturer','serial','capacity','installedAt'].includes(result.field)||!result.value))throw new Error('Choose equipment and a supported fact');
  if(['maintenance','task-completion'].includes(input.kind)&&(!Number.isFinite(Date.parse(result.performedAt))||Date.parse(result.performedAt)>Date.now()))throw new Error('Enter the actual past service date');
  if(input.kind==='contact'&&(!result.value||!result.field))throw new Error('Add provider name and trade');
