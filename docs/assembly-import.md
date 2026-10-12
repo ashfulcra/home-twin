@@ -22,3 +22,19 @@ Limits: 3 MiB per JSON source, 16 MiB OBJ, 20 levels, 200 rooms, 4,000 walls, 2,
 Separate floor and ceiling certainty is preserved, including per-room datum overrides. Missing certainty remains unknown, malformed or inverted overrides hold, and a provisional ceiling cannot become a verified height. The original mesh retains sloped roofs, ceilings, floor holes, masonry and stair profiles that a flat wall-height model would lose. Full source notes and evidence remain in the immutable archived JSON files.
 
 Status is always `source-preview-needs-review`. Hosted owner-only preview is a separate loader/viewer step; accepted-home promotion and any household publication require their own reviewed workflow. Original reconstruction accuracy is not established by format conversion.
+
+## Private hosted source preview
+
+The current owner can inspect an imported package in Layout without accepting its geometry. Archive every generated hashed source and the preview package privately under the same home's `assembly-preview/` folder. Name the package `<SHA256 of preview.json>.json`. Verify exact readback of every asset before writing the private sibling `assembly-preview.json` pointer:
+
+```json
+{
+  "schema": "home-twin-assembly-preview-pointer/1",
+  "homeId": "example-home",
+  "digest": "<64 lowercase hex SHA256 characters>"
+}
+```
+
+The owner gateway validates current identity, private root, canonical file version and raw checksum, package hash and every archived source, then rebuilds the metadata from those originals. Anonymous callers and household members cannot read this private preview. Missing or inconsistent sources are held; they never become an empty model. Updating the accepted home record requires regenerating the preview binding and staging a new immutable package and pointer. Keep prior versions.
+
+The viewer offers original OBJ geometry, room selection, floor isolation, roof/ceiling controls and source floor plans with opening offsets. Coordinates stay unchanged; north is reflected once at the rendering boundary. Display colors are illustrative. Original uncertainties remain visible, and unsupported WebGL still leaves the floor plans available. Mesh delivery uses bounded authenticated chunks whose combined checksum must match the source. No original geometry or evidence belongs in public fixtures or static hosting assets. The viewer provides no model promotion, sharing or editing action.

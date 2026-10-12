@@ -3,6 +3,7 @@
  import HomeKnowledge from './HomeKnowledge.svelte';
  import HomeFeeds from './HomeFeeds.svelte';
  import HomeLayout from './HomeLayout.svelte';
+ import HomeAssemblyPreview from './HomeAssemblyPreview.svelte';
  import HomeCare from './HomeCare.svelte';
  import SharedHomeConnect from './SharedHomeConnect.svelte';
  import HomeAgentStart from './HomeAgentStart.svelte';
@@ -79,6 +80,7 @@
   {:else if section==='Devices'}
    <HomeFeeds onEquipment={(id)=>{section='Equipment';query=home.equipment.find((e:any)=>e.id===id)?.name??'';}} />
   {:else if section==='Layout'}
+   {#if role==='maintainer'}{#key home.id+':'+home.revision+':'+role}<HomeAssemblyPreview />{/key}{/if}
    <HomeLayout {home} {role} oncorrect={correctRoom} />
   {:else if section==='Care'}
    <HomeCare {home} {role} onchanged={load} onEquipment={(id)=>{section='Equipment';query=home.equipment.find((e:any)=>e.id===id)?.name??'';}} />
