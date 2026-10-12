@@ -30,7 +30,7 @@
   <label for="home-agent-start-prompt">Paste this into your agent chat</label>
   <textarea id="home-agent-start-prompt" readonly value={prompt} rows="14"></textarea>
   <button onclick={copyPrompt}>Copy getting-started prompt</button>
-  <p><a href="/api/home/agent-request">Download the private brief and prompt</a></p>
+  <p><a href="/api/home/agent-request" download>Download the private brief and prompt</a></p>
  {/if}
  <p class="note">These instructions don’t launch an agent, grant home access, create shares or start background checks.</p>
  <p role="status">{message}</p>
