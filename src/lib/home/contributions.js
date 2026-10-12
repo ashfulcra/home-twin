@@ -2,7 +2,7 @@ import {validAttachment} from './attachments.js';
 import {validRecurrence,validCompletionOccurrence} from './recurrence.js';
 import {canonicalJSON} from './canonical-json.js';
 /** Portable source identifiers are references, never paths or access grants. @param {any} ids */
-function validNoteSources(ids){return Array.isArray(ids)&&ids.length<=100&&new Set(ids).size===ids.length&&ids.every(id=>typeof id==='string'&&/^[a-z0-9][a-z0-9._-]{0,199}$/i.test(id));}
+export function validNoteSources(ids){return Array.isArray(ids)&&ids.length<=100&&new Set(ids).size===ids.length&&ids.every(id=>typeof id==='string'&&/^[a-z0-9][a-z0-9._-]{0,199}$/i.test(id));}
 /** Immutable contributions are reconciled against a baseline; conflicting new
  * values are held together rather than resolved by arrival order.
  * @param {any} baseline @param {any[]} contributions

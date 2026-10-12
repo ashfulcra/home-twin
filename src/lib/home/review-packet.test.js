@@ -6,7 +6,7 @@ const contribution={id:'11111111-1111-4111-8111-111111111111',homeId:'example',k
 test('held fact packet shows prior/proposed evidence without mutating accepted home',()=>{
  const before=structuredClone(home);const result=reconcileContributions(home,[contribution]);const p=buildReviewPacket(home,result.review,{role:'maintainer',fileVersion:'version-1'});
  expect(p.home).toEqual({id:'example',revision:3,fileVersion:'version-1'});expect(p.items[0]).toMatchObject({reason:'contradiction',entity:{id:'furnace',name:'Furnace'},field:'model',priorValue:'Known',proposedValue:'Proposed',authorUserId:'member',sourceUserId:'member',baseRevision:3,currentRevision:3});
- expect(p.items[0].sources).toEqual([{id:'label',title:'Unit label',verifiedAt:null}]);expect(home).toEqual(before);expect(p.remoteWrites).toBe(false);
+ expect(p.items[0].sources).toEqual([{id:'label',title:'Unit label',verifiedAt:null,hasOriginalReference:false}]);expect(home).toEqual(before);expect(p.remoteWrites).toBe(false);
 });
 test('foreign and malformed rows cannot smuggle secrets or commands into packet',()=>{
  const p=buildReviewPacket(home,[{reason:'contradiction',contribution:{...contribution,secret:'LEAK',command:'run-this'}},{reason:'other',contribution:{...contribution,homeId:'foreign'}},{reason:'invalid-shape',contribution:{text:'Malformed contribution'}},{reason:'unsupported-fact',contribution:{...contribution,field:'__proto__',value:{secret:'LEAK'}}}],{role:'viewer',secret:'LEAK'});

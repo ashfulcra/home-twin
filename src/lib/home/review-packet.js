@@ -1,3 +1,4 @@
+import {buildReviewSources} from './review-sources.js';
 const factFields=new Set(['model','manufacturer','serial','capacity','installedAt']);
 /** @param {any} v @param {number} [limit] */
 const text=(v,limit=500)=>typeof v==='string'?v.slice(0,limit):null;
@@ -9,13 +10,12 @@ export function buildReviewPacket(home,review,options={}){
  const items=review.filter(r=>r?.contribution&&(!r.contribution.homeId||r.contribution.homeId===home.id)).map(r=>{
   const c=r.contribution;const entity=(home.equipment??[]).find((/** @type {any} */ e)=>e.id===c.entityId);
   const field=text(c.field);const supported=c.kind==='fact'&&field!==null&&factFields.has(field);
-  const sourceIds=Array.isArray(entity?.sourceIds)?entity.sourceIds.filter((/** @type {any} */ id)=>typeof id==='string'):[];
   return {contributionId:text(c.id),reason:text(r.reason),kind:text(c.kind),entity:entity?{id:text(entity.id),name:text(entity.name)}:null,
    field,priorValue:supported?text(entity?.[field]??null):null,proposedValue:text(c.value),
    description:text(c.text,10000),descriptionTruncated:typeof c.text==='string'&&c.text.length>10000,
    authorUserId:text(c.authorUserId),sourceUserId:text(c.sourceUserId),recordedAt:text(c.recordedAt),
    baseRevision:Number.isSafeInteger(c.baseRevision)?c.baseRevision:null,currentRevision:home.revision,
-   sources:(home.sources??[]).filter((/** @type {any} */ s)=>sourceIds.includes(s.id)).map((/** @type {any} */ s)=>({id:text(s.id),title:text(s.title),verifiedAt:text(s.verifiedAt)}))};
+   ...buildReviewSources(home,c,entity)};
  });
  return {schema:'home-twin-review-packet/1',scope:'Private read-only review context; not a decision or publication authority.',
   home:{id:home.id,revision:home.revision,fileVersion:text(options.fileVersion)},permissions:{role,canPrepareDecision:role==='maintainer',requiresFreshFulcraCheck:true},
