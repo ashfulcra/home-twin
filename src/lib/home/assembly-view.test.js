@@ -48,13 +48,11 @@ test('stale chunk identity, bad checksum and invalid resource declarations hold'
       meshSizeBytes: issue === 'size' ? 17 * 1024 * 1024 : 1,
       model: { mesh: { sha256: 'b'.repeat(64) } }
     };
-    const send = vi
-      .fn()
-      .mockResolvedValue(
-        new Response('x', {
-          headers: { 'X-Preview-Digest': issue === 'digest' ? 'c'.repeat(64) : info.previewDigest }
-        })
-      );
+    const send = vi.fn().mockResolvedValue(
+      new Response('x', {
+        headers: { 'X-Preview-Digest': issue === 'digest' ? 'c'.repeat(64) : info.previewDigest }
+      })
+    );
     await expect(loadPreviewMesh(info, send)).rejects.toThrow();
     if (issue === 'size') expect(send).not.toHaveBeenCalled();
   }
@@ -68,4 +66,21 @@ test('actual source group preserves east/up and reflects source north only once'
   root.updateMatrixWorld(true);
   expect(mesh.getWorldPosition(new THREE.Vector3()).toArray()).toEqual([4, 7, -9]);
   expect(mesh.position.toArray()).toEqual([4, 7, 9]);
+});
+
+test('camera bounds frame only visible source geometry in world coordinates', async () => {
+  const { sourceViewBounds } = await import('./assembly-renderer.js');
+  const root = createSourceGroup();
+  const shown = new THREE.Mesh(new THREE.BoxGeometry(4, 2, 6));
+  shown.position.set(2, -6, 3);
+  const hidden = new THREE.Mesh(new THREE.BoxGeometry(100, 100, 100));
+  hidden.position.set(100, 100, 100);
+  hidden.visible = false;
+  root.add(shown, hidden);
+  root.updateMatrixWorld(true);
+  const b = sourceViewBounds([shown, hidden]);
+  expect(b.getCenter(new THREE.Vector3()).toArray()).toEqual([2, -6, -3]);
+  expect(b.getSize(new THREE.Vector3()).toArray()).toEqual([4, 2, 6]);
+  shown.geometry.dispose();
+  hidden.geometry.dispose();
 });

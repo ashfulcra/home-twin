@@ -154,7 +154,10 @@
       </p>
       <div class="canvas" bind:this={host} aria-label="Original source house model"></div>
       {#if meshError}<p role="alert">{meshError}</p>{/if}
-    {:else}<p>North ↑ · East → · model coordinates in feet</p>
+    {:else}<p>
+        {info.model.levels.find((l: any) => l.id === floor)?.label} floor plan · North ↑ · East → · model
+        coordinates in feet
+      </p>
       <svg
         viewBox={`${bounds.x} ${bounds.y} ${bounds.w} ${bounds.h}`}
         role="group"
@@ -270,6 +273,13 @@
     border-radius: 10px;
     background: #faf9f3;
     touch-action: none;
+  }
+  svg path:focus {
+    outline: none;
+  }
+  svg path:focus-visible {
+    stroke: #267354;
+    stroke-width: 0.3;
   }
   text {
     pointer-events: none;

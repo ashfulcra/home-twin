@@ -6,6 +6,16 @@ export function createSourceGroup() {
   root.scale.z = -1;
   return root;
 }
+/** @param {THREE.Object3D[]} objects */
+export function sourceViewBounds(objects) {
+  const bounds = new THREE.Box3();
+  for (const node of objects)
+    if (node.visible) {
+      node.updateWorldMatrix(true, true);
+      bounds.expandByObject(node);
+    }
+  return bounds;
+}
 /** Exact source mesh renderer; render-only north reflection, no registration/fitting.
  * @param {HTMLElement} host @param {any} model @param {Uint8Array} bytes @param {(id:string)=>void} onselect */
 export function mountAssembly(host, model, bytes, onselect) {
@@ -78,11 +88,12 @@ export function mountAssembly(host, model, bytes, onselect) {
     selected = '',
     disposed = false,
     frame = 0;
-  const bbox = new THREE.Box3().setFromObject(root),
-    center = bbox.getCenter(new THREE.Vector3()),
-    size = bbox.getSize(new THREE.Vector3()),
-    distance = Math.max(size.x, size.y, size.z) * 1.25;
   function reset() {
+    const bbox = sourceViewBounds(objects);
+    if (bbox.isEmpty()) return;
+    const center = bbox.getCenter(new THREE.Vector3()),
+      size = bbox.getSize(new THREE.Vector3()),
+      distance = Math.max(size.x, size.y, size.z) * 0.95;
     camera.position.set(center.x + distance * 0.55, center.y + distance * 0.7, center.z + distance);
     controls.target.copy(center);
     controls.update();
@@ -127,8 +138,8 @@ export function mountAssembly(host, model, bytes, onselect) {
     }
   });
   observer.observe(host);
-  reset();
   apply();
+  reset();
   function animate() {
     if (disposed) return;
     controls.update();
@@ -139,12 +150,14 @@ export function mountAssembly(host, model, bytes, onselect) {
   return {
     reset,
     filter: (/** @type {any} */ o) => {
+      const previousLevel = level;
       level = o.level ?? 'all';
       roofs = !!o.roofs;
       ceilings = !!o.ceilings;
       cutaway = o.cutaway !== false;
       selected = o.selected ?? '';
       apply();
+      if (previousLevel !== level) reset();
     },
     dispose: () => {
       disposed = true;
