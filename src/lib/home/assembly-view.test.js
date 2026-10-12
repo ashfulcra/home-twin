@@ -84,3 +84,26 @@ test('camera bounds frame only visible source geometry in world coordinates', as
   shown.geometry.dispose();
   hidden.geometry.dispose();
 });
+
+test('partial assembly initialization releases all allocated resources and normal disposal is idempotent', async () => {
+  const { withAssemblyResources } = await import('./assembly-renderer.js');
+  /** @type {string[]} */ const disposed = [];
+  expect(() =>
+    withAssemblyResources((own) => {
+      own(() => disposed.push('renderer'));
+      own(() => {
+        disposed.push('controls');
+        throw Error('cleanup failure');
+      });
+      throw Error('parse failure');
+    })
+  ).toThrow('parse failure');
+  expect(disposed).toEqual(['controls', 'renderer']);
+  const normal = withAssemblyResources((own, dispose) => {
+    own(() => disposed.push('normal'));
+    return { dispose };
+  });
+  normal.dispose();
+  normal.dispose();
+  expect(disposed).toEqual(['controls', 'renderer', 'normal']);
+});
