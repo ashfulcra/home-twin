@@ -100,3 +100,4 @@ Add `--check-sources` to the maintainer `cycle` command to compare referenced Fu
 
 
 Continuous owner agents can inspect explicitly shared join requests without a browser using `node scripts/home-join-inbox.mjs inspect HOME_ID EXISTING_PRIVATE_MAINTAINER_STATE --root /PROJECT/twin` (or the configured `--legacy-root`). It reuses the current-owner app validation and existing private checkpoint/lock, keeps immutable private reports, stays silent when unchanged, and makes no remote changes. Run the source-audited maintainer cycle separately. See [owner agent discovery](docs/join-requests.md#owner-agent-discovery).
+Existing reconstructed houses can be preserved as private, hash-verified offline review packages with the [assembly importer](docs/assembly-import.md). This retains original geometry and meshes without promoting new accepted home facts.
