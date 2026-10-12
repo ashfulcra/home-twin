@@ -1,3 +1,5 @@
+> Current app workflow: [automatic requests and owner dashboard approval](web-joining.md). The manual request and agent/CLI application described below remain compatibility tools; they are no longer required for joining through a named app.
+
 # Join requests and owner review
 
 Named existing-home apps keep sign-in and account creation separate from household access. An applicant without current access sees the home's configured owner, their own authenticated Fulcra account ID and an agent getting-started prompt. There is no new-home provisioning or automatic membership.

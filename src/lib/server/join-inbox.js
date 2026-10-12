@@ -1,3 +1,4 @@
+import {exactAdmissionShare} from '../home/share-scope.js';
 import {createHash} from 'node:crypto';
 import {parseJoinCode,validateSharedJoinRequest,joinIntentID,buildJoinReview} from '../home/joining.js';
 import {canonicalJSON} from '../home/canonical-json.js';
@@ -40,7 +41,25 @@ export async function loadJoinInbox(access,transport){
     if(value.id!==match[1]||await joinIntentID(value)!==value.id||canonicalJSON(value)!==canonicalJSON(normalized))throw Error('Review identity differs');const old=decisions.get(row.code)??[];old.push(value);decisions.set(row.code,old);
    }catch{reviewIncomplete=true;}
   }
-  for(const row of requests){const values=decisions.get(row.code)??[];const outcomes=new Set(values.map(v=>v.decision+':'+v.role));if(reviewIncomplete)row.state='review-unverified';else if(outcomes.size>1)row.state='conflicting-decisions';else if(values.length){const value=values.find(v=>v.homeRevision===access.home.revision&&v.homeFileVersion===access.file?.id&&v.homeDigest===digest(access.file?.text??''))??values[0];row.state=value.decision==='reject'?'rejected':access.home.members?.some((/** @type {any} */m)=>m.userId===row.userId&&m.role===value.role)?'role-recorded':value.homeRevision!==access.home.revision||value.homeFileVersion!==access.file?.id||value.homeDigest!==digest(access.file?.text??'')?'approval-needs-review':'approved-awaiting-application';}}
+  /** @type {any} */let outgoing;
+  for(const row of requests){
+   const values=decisions.get(row.code)??[],outcomes=new Set(values.map(v=>v.decision+':'+v.role));
+   if(reviewIncomplete)row.state='review-unverified';
+   else if(outcomes.size>1)row.state='conflicting-decisions';
+   else if(values.length){
+    let value=values.find(v=>v.homeRevision===access.home.revision&&v.homeFileVersion===access.file?.id&&v.homeDigest===digest(access.file?.text??''))??values[0];
+    if(value.decision==='reject')row.state='rejected';
+    else{
+     row.reviewCode=value.id+'-'+digest(JSON.stringify(value));
+     if(access.home.members?.some((/** @type {any} */m)=>m.userId===row.userId&&m.role===value.role)){
+      outgoing??=await transport.outgoing();
+      const confirmed=values.find(v=>exactAdmissionShare(outgoing,{datashare_name:'home-twin:'+target.homeId+':'+v.id,fulcra_user_name:target.ownerUserId,time_start:null,time_end:null,fulcra_data_types:['file:/shared/home-twin/'+target.homeId+'/home.json'],share_all_data:false,permissions:[{allowed_fulcra_userid:row.userId}],group_permissions:[]}));
+      if(confirmed){value=confirmed;row.reviewCode=value.id+'-'+digest(JSON.stringify(value));row.state='role-recorded';}
+      else row.state='grant-unconfirmed';
+     }else row.state=value.homeRevision!==access.home.revision||value.homeFileVersion!==access.file?.id||value.homeDigest!==digest(access.file?.text??'')?'approval-needs-review':'approved-awaiting-application';
+    }
+   }
+  }
  }
  const after=incomingJoinCandidates(await transport.incoming(),target);if(canonicalJSON(before)!==canonicalJSON(after))throw Error('Incoming request access changed; refresh the inbox');
  return {status:'current-owner-inbox',requests:requests.map(({request,...row})=>row),attentionCount:requests.filter(r=>!['rejected','role-recorded'].includes(r.state)).length,more:before.sources.length>20,unavailableCount,unsupportedCount:before.unsupportedCount,reviewIncomplete,memberAccessVerified:false};

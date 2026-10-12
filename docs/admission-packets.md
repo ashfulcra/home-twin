@@ -1,3 +1,5 @@
+> Current app workflow: [automatic requests and owner dashboard approval](web-joining.md). The manual request and agent/CLI application described below remain compatibility tools; they are no longer required for joining through a named app.
+
 # Exact publication review and private admission packets
 
 Before approving an applicant, the named-home owner can choose **Preview household records** under Household. This prepares a private, read-only projection without a recipient. It never publishes or shares. After reading an actual applicant's exact shared request, the owner selects the role, reads the exact proposed JSON and confirms that recipient, role, scope and contents. A changed role clears consent. Contacts, equipment identifiers, maintenance, notes and model geometry are intentionally visible in that preview; review the text as well as field names before approving a trusted recipient.

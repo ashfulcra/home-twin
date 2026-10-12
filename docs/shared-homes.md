@@ -1,3 +1,5 @@
+> Current app workflow: [automatic requests and owner dashboard approval](web-joining.md). The manual request and agent/CLI application described below remain compatibility tools; they are no longer required for joining through a named app.
+
 # One home, multiple Fulcra accounts
 
 The home belongs to a designated maintainer's Fulcra account. Other household members sign in using their own accounts. Shared reads always use the caller's token and Fulcra's current permissions; the app never lends the maintainer's token to a member.

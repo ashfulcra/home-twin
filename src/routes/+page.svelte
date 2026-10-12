@@ -4,7 +4,7 @@
   import { onMount } from 'svelte';
   import LoginDeviceFlow from '$lib/components/LoginDeviceFlow.svelte';
 
-  /** @type {{timezone?: string} | null} */
+  let {data}=$props();
   import HomeDashboard from '$lib/components/HomeDashboard.svelte';
   onMount(async () => { await user.init(); });
 </script>
@@ -14,7 +14,7 @@
 </svelte:head>
 
 {#if !$user.authenticated}
-  <LoginDeviceFlow />
+  <LoginDeviceFlow existingHome={data.existingHome} />
 {:else}
   <HomeDashboard />
   <button class="mx-auto my-4 text-fulcra-teal" onclick={user.logout}>Sign Out</button>

@@ -2,6 +2,7 @@
   import {env} from '$env/dynamic/public';
   import { user } from '$lib/user';
   import fulcraLogo from '$lib/assets/app-icon_152.png';
+  let {existingHome=false}=$props();
   // import appLogo from '$lib/assets/your-logo.svg';
 
   // ---- fill these in for your app ----
@@ -110,17 +111,18 @@
       </div>
 
       <div class="rounded-lg border border-solid border-fulcra-black-25 bg-[#1b1b23] p-[22px]">
+        {#if existingHome}<p class="mb-4 text-[13px] leading-[1.6] text-fulcra-gray">New to this home? Signing in submits an access request to its owner. Only that request is shared; the home stays private until you’re approved.</p>{/if}
         <h2 class="mb-4 text-[15px] font-medium tracking-[-0.01em]">Get started</h2>
 
         {#if !verificationInfo}
           <div class="flex flex-col gap-2.5">
             <button
               class="btn h-12 w-full rounded-lg bg-fulcra-teal/20 text-[14.5px] font-medium text-fulcra-teal transition-colors hover:bg-fulcra-teal/50 hover:text-fulcra-black"
-              on:click={startLogin}>Sign In</button
+              onclick={startLogin}>Sign In</button
             >
             <button
               class="btn h-12 w-full rounded-lg border border-solid border-fulcra-black-25 bg-transparent text-[14.5px] font-normal text-fulcra-white transition-colors hover:border-fulcra-black-20 hover:bg-fulcra-black-50"
-              on:click={startLogin}>Create Account</button
+              onclick={startLogin}>Create Account</button
             >
           </div>
 
