@@ -33,7 +33,7 @@ test('bounded original mesh chunks are recombined and byte-hash verified', async
         headers: { 'X-Preview-Digest': info.previewDigest }
       })
     );
-  expect(await loadPreviewMesh(info, send)).toEqual(b);
+  expect(Buffer.from(await loadPreviewMesh(info, send)).equals(Buffer.from(b))).toBe(true);
   expect(
     send.mock.calls.every((c) =>
       String(c[0]).startsWith('/api/home/assembly-preview?mesh=1&digest=')
