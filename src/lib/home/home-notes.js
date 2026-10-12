@@ -26,7 +26,7 @@ export function projectHomeNotes(home,asOf=new Date().toISOString()){
   const item={id,text:row.text.slice(0,limits.textCharacters),entityId:equipmentIds.has(row.entityId)?row.entityId:null,
    recordedAt:recorded&&Number.isFinite(Date.parse(recorded))&&Number.isFinite(cutoff)&&Date.parse(recorded)<=cutoff?recorded:null,
    authorUserId:identifier(row.authorUserId),
-   sourceIds:[...new Set((Array.isArray(row.sourceIds)?row.sourceIds:[]).filter((/** @type {any} */ value)=>sourceIds.has(value)))].slice(0,20),textTruncated};
+   sourceIds:[...new Set((Array.isArray(row.sourceIds)?row.sourceIds:[]).filter((/** @type {any} */ value)=>sourceIds.has(value)))],textTruncated};
   const size=new TextEncoder().encode(JSON.stringify(item)).byteLength+(items.length?1:0);
   if(items.length>=limits.items||bytes+size>limits.jsonBytes){omittedCount++;continue;}
   items.push(item);bytes+=size;truncated||=textTruncated;

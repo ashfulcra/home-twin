@@ -27,3 +27,8 @@ test('multibyte text respects the serialized byte bound and invalid-only rows ne
  expect(b.home.knowledgeNotes.status).toBe('size-limited');expect(new TextEncoder().encode(JSON.stringify(b.home.knowledgeNotes.items)).byteLength).toBeLessThanOrEqual(128*1024);expect(b.home.knowledgeNotes.omittedCount).toBeGreaterThan(0);
  const bad=buildAgentBrief({...h,notes:[{id:'foreign',homeId:'other',text:'Secret'}]},{generatedAt:stamp});expect(bad.home.knowledgeNotes).toMatchObject({status:'partial',unsupportedCount:1,items:[]});
 });
+
+test('all known source references are retained when they fit the declared byte budget',()=>{
+ const sources=Array.from({length:21},(_,i)=>({id:'source-'+i,title:'Example source'}));const sourceIds=sources.map(s=>s.id);const b=buildAgentBrief({...h,sources,notes:[{id:'references',text:'Care evidence',sourceIds}]},{generatedAt:stamp});
+ expect(b.home.knowledgeNotes.status).toBe('available');expect(b.home.knowledgeNotes.items[0].sourceIds).toEqual(sourceIds);
+});
