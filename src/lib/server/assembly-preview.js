@@ -83,10 +83,13 @@ export async function loadAssemblyPreview(access, reader, recheck, expectedDiges
     p.schema !== 'home-twin-assembly-preview/1' ||
     p.status !== 'source-preview-needs-review' ||
     binding?.homeId !== access.home.id ||
-    binding?.canonicalFileVersion !== access.file.id ||
-    binding?.canonicalDigest !== baselineDigest
+    typeof binding?.canonicalFileVersion !== 'string' ||
+    !binding.canonicalFileVersion ||
+    binding.canonicalFileVersion.length > 300 ||
+    typeof binding?.canonicalDigest !== 'string' ||
+    !hex.test(binding.canonicalDigest)
   )
-    throw held('Source preview baseline is stale; prepare it against the current home record');
+    throw held('Source preview has an invalid home baseline binding');
   if (
     !Array.isArray(p.sourceReceipts) ||
     p.sourceReceipts.length < 3 ||
@@ -130,5 +133,8 @@ export async function loadAssemblyPreview(access, reader, recheck, expectedDiges
     assemblyDigest(data(after, 2048)) !== assemblyDigest(data(pointer, 2048))
   )
     throw held('Source preview pointer changed during the check');
-  return { previewDigest: index.digest, model: rebuilt, meshBytes };
+  // Historical source provenance is readable, but never current model acceptance authority.
+  const baselineCurrent =
+    binding.canonicalFileVersion === access.file.id && binding.canonicalDigest === baselineDigest;
+  return { previewDigest: index.digest, model: rebuilt, meshBytes, baselineCurrent };
 }

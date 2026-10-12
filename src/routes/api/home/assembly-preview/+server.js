@@ -38,7 +38,7 @@ export async function GET({ cookies, url }) {
     throw error(
       status,
       status === 409
-        ? 'The source preview needs refreshing against the current home and source files. Saved records are unchanged.'
+        ? 'The home or source changed during verification. Refresh the source view; saved records remain unchanged.'
         : 'The private source preview could not be verified. This does not change your accepted home.'
     );
   }
@@ -70,6 +70,7 @@ export async function GET({ cookies, url }) {
     {
       status: result.model.status,
       previewDigest: result.previewDigest,
+      baselineCurrent: result.baselineCurrent,
       model: result.model,
       meshParts: count,
       meshSizeBytes: result.meshBytes.length

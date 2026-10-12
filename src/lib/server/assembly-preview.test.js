@@ -128,3 +128,86 @@ test('verified absent pointer differs from source outage and mid-read identity c
     loadAssemblyPreview(h.access, h.reader, async () => ({ ...h.access, role: 'viewer' }))
   ).rejects.toThrow(/owner/i);
 });
+
+test('verified original source remains inspectable after a same-home service record update without rebasing it', async () => {
+  const f = setup();
+  const text = JSON.stringify({
+    ...f.access.home,
+    revision: 2,
+    history: [
+      {
+        id: 'visit',
+        kind: 'maintenance',
+        status: 'completed',
+        performedAt: '2026-01-01',
+        summary: 'Synthetic service record'
+      }
+    ]
+  });
+  const current = { ...f.access, file: { id: 'v2', text }, home: JSON.parse(text) };
+  f.files.set('/home/twin/home.json', { id: 'v2', bytes: bytes(text) });
+  const result = await loadAssemblyPreview(current, f.reader, async () => current);
+  expect(result?.baselineCurrent).toBe(false);
+  expect(result?.model).toEqual(f.p);
+  expect(result?.meshBytes).toEqual(f.mesh);
+  expect(result?.model.homeBinding.canonicalFileVersion).toBe('v1');
+  expect(result?.previewDigest).toBe(f.digest);
+  const unchanged = setup();
+  expect(
+    (await loadAssemblyPreview(unchanged.access, unchanged.reader, async () => unchanged.access))
+      ?.baselineCurrent
+  ).toBe(true);
+});
+test('historical reference still holds when current canonical changes during source retrieval', async () => {
+  const f = setup();
+  let reads = 0;
+  const read = f.reader.read;
+  f.reader.read = vi.fn(async (path) => {
+    if (path === '/home/twin/home.json' && ++reads === 2)
+      return { id: 'v2', bytes: bytes({ ...f.access.home, revision: 2 }) };
+    return read(path);
+  });
+  await expect(loadAssemblyPreview(f.access, f.reader, async () => f.access)).rejects.toThrow(
+    /baseline changed/i
+  );
+});
+test('a hash-valid source package for another home is denied even to the current owner', async () => {
+  const f = setup();
+  const p = { ...f.p, homeBinding: { ...f.p.homeBinding, homeId: 'another-home' } },
+    raw = bytes(p),
+    digest = sha(raw);
+  f.files.set('/home/twin/assembly-preview.json', {
+    id: 'changed-pointer',
+    bytes: bytes({ schema: 'home-twin-assembly-preview-pointer/1', homeId: 'example', digest })
+  });
+  f.files.set('/home/twin/assembly-preview/' + digest + '.json', {
+    id: 'foreign-package',
+    bytes: raw
+  });
+  await expect(loadAssemblyPreview(f.access, f.reader, async () => f.access)).rejects.toThrow();
+});
+
+test('historical reference refuses malformed hash-valid import bindings', async () => {
+  for (const patch of [
+    { canonicalFileVersion: 0 },
+    { canonicalFileVersion: '' },
+    { canonicalDigest: 0 },
+    { canonicalDigest: 'invalid' }
+  ]) {
+    const f = setup(),
+      p = { ...f.p, homeBinding: { ...f.p.homeBinding, ...patch } },
+      raw = bytes(p),
+      digest = sha(raw);
+    f.files.set('/home/twin/assembly-preview.json', {
+      id: 'changed-pointer',
+      bytes: bytes({ schema: 'home-twin-assembly-preview-pointer/1', homeId: 'example', digest })
+    });
+    f.files.set('/home/twin/assembly-preview/' + digest + '.json', {
+      id: 'invalid-package',
+      bytes: raw
+    });
+    await expect(loadAssemblyPreview(f.access, f.reader, async () => f.access)).rejects.toThrow(
+      /invalid home baseline binding/i
+    );
+  }
+});

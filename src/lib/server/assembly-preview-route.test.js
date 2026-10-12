@@ -50,6 +50,7 @@ test('metadata and bounded mesh parts are private current-caller responses', asy
     digest = 'a'.repeat(64);
   mocks.load.mockResolvedValue({
     previewDigest: digest,
+    baselineCurrent: false,
     model: { status: 'source-preview-needs-review' },
     meshBytes: raw
   });
@@ -57,6 +58,7 @@ test('metadata and bounded mesh parts are private current-caller responses', asy
   expect(meta.headers.get('Cache-Control')).toBe('private, no-store');
   expect(await meta.json()).toMatchObject({
     previewDigest: digest,
+    baselineCurrent: false,
     meshParts: 2,
     meshSizeBytes: raw.length
   });

@@ -119,6 +119,11 @@
 {#if info}<section class="source-preview">
     <h2>Existing house model</h2>
     <p><strong>Source preview · awaiting model review</strong></p>
+    {#if info.baselineCurrent === false}<p class="reference-notice" role="status">
+        At the last preview check, your home records had changed since this model was imported. You
+        can still explore this source reference. An agent must prepare it against the current
+        records before model acceptance.
+      </p>{/if}
     <p>
       Original reconstructed shapes and familiar room names. Source estimates and unresolved details
       remain visible.
@@ -225,8 +230,9 @@
       >{#each info.model.uncertainties as note}<p>{note}</p>{/each}
     </details>
     <p>
-      This preview remains separate from accepted home facts and household publication. Model
-      acceptance needs its own review.
+      This preview remains separate from accepted home facts and household publication. The record
+      status reflects the last preview check; refresh it after changing home records. Model
+      acceptance needs its own review and a fresh check against the current records.
     </p>
     <button onclick={load}>Refresh source preview</button>
   </section>{/if}
@@ -238,6 +244,11 @@
     border: 1px solid #c8d7cc;
     border-radius: 12px;
     background: #fafbf8;
+  }
+  .reference-notice {
+    padding: 12px;
+    border-left: 3px solid #ad8948;
+    background: #faf2dc;
   }
   h2 {
     font-size: 25px;
