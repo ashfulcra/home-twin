@@ -1,12 +1,14 @@
-> Current app workflow: [automatic requests and owner dashboard approval](web-joining.md). The manual request and agent/CLI application described below remain compatibility tools; they are no longer required for joining through a named app.
-
 # One home, multiple Fulcra accounts
 
 The home belongs to a designated maintainer's Fulcra account. Other household members sign in using their own accounts. Shared reads always use the caller's token and Fulcra's current permissions; the app never lends the maintainer's token to a member.
 
-## Agent-assisted joining
+## Joining through a named-home app
 
-For an existing named-home app, use its **Join this home** page and copyable applicant prompt. The applicant saves an own-account request, separately consents an exact request-file share to the configured owner, and passes the code. The owner reviews recipient/role/exact household contents and records approval. The designated maintainer then uses the guarded executor in [admission packets](admission-packets.md) with specific owner authorization and the existing private state. Saved approval alone does not grant access.
+Sign in with your own Fulcra account. The login screen discloses that the app submits an access request and shares only that exact request file with the configured owner. A confirmed request share opens a pending page saying **Your request to join this home has been sent**, with **Check for approval** and no home records. Unconfirmed requests remain explicit; **Retry request** continues the same operation. No new home is created and no access is granted by sign-in.
+
+The owner opens **Household → Join requests**, reviews the applicant, role and exact curated contents, then confirms **Approve access**. The persistent backend applies the reviewed membership/publication/current-file share; no agent is required. **Continue access setup** resumes an interrupted saved operation. Saving a decision alone is not completion. The applicant verifies current access with a fresh own-account read. See [web joining](web-joining.md) for the current workflow and service setup. [Manual request and packet tools](join-requests.md#manual-compatibility-workflow) remain compatibility options, not required joining steps.
+
+The pending page offers an optional own-account agent prompt to check read-only every 30 minutes if scheduling is available, stay quiet while pending, report confirmed approval once and stop. Copying the prompt does not connect an agent or install a schedule. Return contribution/evidence shares and optional mesh are separate after approval. No GitHub account is required for household access.
 
 The owner's full canonical record remains under its configured private root; the curated household record is `/shared/home-twin/<home-id>/home.json`. Admission grants only this current file to the exact recipient. Original evidence, private journals/history and optional mesh are separate scopes. Both a current member role and a current Fulcra share are needed. Genuine member-side access/read/contribute/revoke acceptance remains a pilot prerequisite.
 
@@ -29,7 +31,7 @@ After contributor approval and a successful shared-home read, Household provides
 
 Home access, contribution sharing and agent pairing are separate states. The prompt is instructions, not a grant or proof of connection. The member consents to their own contribution/outbox shares; the owner consents to their home/return-outbox shares. A mesh message cannot grant membership or rewrite an accepted home. Use confirmed incoming share account IDs, exact message readback and a return acknowledgment before reporting pairing complete. Viewer prompts do not offer contribution pairing. See [agent handoff](agent-handoff.md) and the official [mesh skill](https://raw.githubusercontent.com/fulcradynamics/agent-skills/main/skills/fulcra-mesh/SKILL.md).
 
-The current manual shared-home connection is a pilot. Named deployments provide joining instructions, caller-owned private requests, owner review intents and the verified role-specific prompt after current access. See [request and review workflow](join-requests.md). A saved review does not automatically publish or grant access; the designated maintainer's guarded application remains separate. The joining page explicitly says it sends no notification or share.
+The generic/manual shared-home connection remains a pilot. Named deployments use automatic request submission and owner dashboard application; after verified access, role-specific prompts can support optional agent contributions. A private request save alone is not owner delivery, and a decision save alone is not applied access. Neither route sends off-app email/push notifications.
 
 ## Named existing-home deployments
 
@@ -39,7 +41,7 @@ The owner reads the configured canonical record. Other signed-in users read only
 
 New-home setup is denied; `/onboarding` returns to the home page. Foreign home connections and a member's own-home connection are denied. The existing-home dashboard omits new-home setup and manual foreign-home selection. Deployments without these target settings retain the generic starter's creation/connection flow.
 
-The applicant prompt identifies the configured home and owner and the authenticated requester. It asks the agent to verify the requester's own Fulcra login, prepare an access request to pass to the owner, then re-check approval. It grants nothing and sends nothing. Contributors authorize their own return contribution/evidence shares separately from the owner's home share; optional per-peer mesh pairing follows contributor approval and requires separate consent and acknowledged delivery. The owner must publish a deliberately scoped household record/evidence before granting access; this deployment mode never automatically copies, shares or migrates a private vault.
+The optional pending prompt identifies the configured home/owner and authenticated requester, and checks the existing request's approval using that requester's own Fulcra connection. It neither creates another request nor grants access. Contributors authorize their own return contribution/evidence shares separately from the owner's home share; optional per-peer mesh pairing follows contributor approval and requires separate consent and acknowledged delivery. Dashboard admission publishes only the owner-reviewed curated file. Original evidence needs separate consent and deliberate publication; this mode never exports or shares an entire private vault.
 
 ## Revocation and recovery
 
@@ -51,4 +53,4 @@ Unavailable inbound shares are reported separately; one unavailable member does 
 
 Use two genuine household accounts to verify: shared home read; contributor submission in their own account; maintainer ingestion and publication; viewer write denial; unrelated account denial; revocation followed by a fresh read. Synthetic contract tests help development but do not replace this acceptance check. Until that live workflow is verified, label household collaboration as a pilot.
 
-Owners discover explicitly shared exact request files in Household → Join requests, with an attention badge when the app opens or refocuses and a manual refresh. Private save alone is not delivery, and no off-app notification is sent. See [owner inbox behavior and limits](join-requests.md#owner-inbox-contract).
+Owners discover confirmed exact request-file shares in Household → Join requests (automatically created by the disclosed named-app login, or separately authorized in a manual integration), with an attention badge when the app opens or refocuses and a manual refresh. Private save alone is not delivery, and no off-app notification is sent. See [owner inbox behavior and limits](join-requests.md#owner-inbox-contract).

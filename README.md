@@ -18,7 +18,7 @@ npm run check
 npm run build
 ```
 
-Private data loads from the signed-in user's Fulcra account; it is never bundled into the browser build. New users can choose **guided home setup** or **join a household**. Setup preserves existing records and saves questionnaire evidence without inventing service dates, providers or maintenance intervals.
+Private data loads through the signed-in user's Fulcra permissions; it is never bundled into the browser build. In a named existing-home deployment, login automatically submits an access request, a confirmed request share opens a pending page and the owner approves from Household without an agent. See [web joining](docs/web-joining.md). No GitHub account is required for household access. Only the generic starter without a named target offers **guided home setup** or manual household connection. Setup preserves existing records and saves questionnaire evidence without inventing service dates, providers or maintenance intervals.
 
 For production use Fulcra's official [build-and-deploy-a-web-app skill](https://github.com/fulcradynamics/agent-skills/tree/main/skills/build-and-deploy-a-web-app). Configure the owner's UUID, harness annotation and private workspace before evaluating deployments. The owner-only harness shows real recorded runs and workspace evidence; it is not a static completion checklist.
 
@@ -50,7 +50,7 @@ Care includes provider lookup, actual service dates, optional assigned chores an
 
 Read [shared homes](docs/shared-homes.md) and [contributions](docs/contributions.md). Each contributor uses their own Fulcra account. Only home-specific folders are shared; both an explicit Fulcra share and a member role are required. Contributors cannot rewrite the maintainer's snapshot. Source account attribution is checked, and contradictions or major geometry changes remain in review.
 
-Collaboration is a pilot until a genuine two-account shared read/contribute/reconcile/revoke workflow has passed. Contract tests do not replace that live check. Revocation blocks future reads; it cannot recall previously downloaded information. Manual review-decision files are preserved, but the local helper prepares reviewed fact candidates, while the UI does not publish those decisions automatically.
+Collaboration is a pilot until a genuine two-account shared read/contribute/reconcile/revoke workflow has passed. Contract tests do not replace that live check. Revocation blocks future reads; it cannot recall previously downloaded information. Manual fact/geometry review-decision files are preserved: the local helper prepares reviewed fact candidates, while the UI does not publish those fact decisions automatically. Joining approvals use the separate owner dashboard workflow above.
 
 The [rough layout editor](docs/layout-drafts.md) offers synthetic examples and an adjacency interview, with direct segment selection and freeform lengths. Estimated drafts stay correctable and require review before replacing an accepted model.
 
