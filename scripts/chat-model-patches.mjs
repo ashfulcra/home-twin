@@ -39,7 +39,7 @@ const identity = (/** @type {any} */ b, /** @type {any} */ context, /** @type {a
     hash.slice(20, 32)
   );
 };
-/** Prepare-only model review. No cloud IO, approval, publisher or rollback capability.
+/** Private model proposals and exact owner decisions. No cloud IO, publisher or rollback capability.
  * Authority and original verification come from the current authenticated request.
  * @param {any} options */
 export async function createChatModelPatches({
@@ -204,24 +204,85 @@ export async function createChatModelPatches({
       throw Error('Model proposal content differs');
     return j;
   }
-  const view = (/** @type {any} */ j, /** @type {any} */ a) => ({
-    kind: 'model-patch',
-    actionId: j.proposal.actionId,
-    digest: j.digest,
-    conversationId: j.proposal.conversationId,
-    turnId: j.proposal.turnId,
-    note: j.proposal.draft.note,
-    sourceIds: [...j.proposal.draft.sourceIds],
-    sourceChecks: structuredClone(j.proposal.sources),
-    baseRevision: j.proposal.baseline.revision,
-    changes: structuredClone(j.proposal.changes),
-    majorReviewRequired: true,
-    status:
-      canonicalJSON(base(a)) === canonicalJSON(j.proposal.baseline)
-        ? 'needs-model-review'
-        : 'stale-model',
-    sourceVerification: 'prepared-version-only'
-  });
+  async function view(/** @type {any} */ j, /** @type {any} */ a) {
+    const decision = await readDecision(
+      join(
+        directory,
+        a.scope.homeId,
+        a.scope.principalId,
+        j.proposal.conversationId,
+        j.proposal.actionId + '.decision.json'
+      ),
+      j
+    );
+    return {
+      kind: 'model-patch',
+      actionId: j.proposal.actionId,
+      digest: j.digest,
+      conversationId: j.proposal.conversationId,
+      turnId: j.proposal.turnId,
+      note: j.proposal.draft.note,
+      sourceIds: [...j.proposal.draft.sourceIds],
+      sourceChecks: structuredClone(j.proposal.sources),
+      baseRevision: j.proposal.baseline.revision,
+      changes: structuredClone(j.proposal.changes),
+      majorReviewRequired: true,
+      status:
+        canonicalJSON(base(a)) === canonicalJSON(j.proposal.baseline)
+          ? decision
+            ? 'model-approval-recorded'
+            : 'needs-model-review'
+          : 'stale-model',
+      ...(decision ? { approvalRecorded: true, approvedAt: decision.j.decision.decidedAt } : {}),
+      sourceVerification: 'prepared-version-only'
+    };
+  }
+  async function readDecision(/** @type {string} */ path, /** @type {any} */ proposal) {
+    let found = null;
+    for (const staged of [false, true]) {
+      try {
+        const name = path + (staged ? '.tmp' : ''),
+          st = await lstat(name);
+        if (!st.isFile() || st.isSymbolicLink() || st.mode & 0o077 || st.size > 4096)
+          throw Error('Private bounded model decision required');
+        const j = JSON.parse(await readFile(name, 'utf8')),
+          d = j.decision,
+          p = proposal.proposal;
+        if (
+          !exact(j, ['schema', 'decision', 'digest']) ||
+          j.schema !== 1 ||
+          !exact(d, [
+            'kind',
+            'binding',
+            'actionId',
+            'conversationId',
+            'proposalDigest',
+            'decidedAt'
+          ]) ||
+          d.kind !== 'model-approval' ||
+          canonicalJSON(d.binding) !== canonicalJSON(p.binding) ||
+          d.actionId !== p.actionId ||
+          d.conversationId !== p.conversationId ||
+          d.proposalDigest !== proposal.digest ||
+          typeof d.decidedAt !== 'string' ||
+          d.decidedAt.length > 100 ||
+          !Number.isFinite(Date.parse(d.decidedAt)) ||
+          sha(d) !== j.digest
+        )
+          throw Error('Model decision integrity or scope differs');
+        if (found && canonicalJSON(found.j) !== canonicalJSON(j))
+          throw Error('Conflicting model decision stage requires review');
+        found ??= { j, staged, path };
+      } catch (e) {
+        if (!missing(e)) throw e;
+      }
+    }
+    return found;
+  }
+  function requireOwner(/** @type {any} */ a) {
+    if (a.scope.role !== 'maintainer' || a.scope.principalId !== a.scope.ownerUserId)
+      throw Error('Current designated owner required for model approval');
+  }
   async function existing(
     /** @type {any} */ a,
     /** @type {any} */ context,
@@ -296,8 +357,23 @@ export async function createChatModelPatches({
       if (!uuid.test(n) || !(await dir(join(actor, n))))
         throw Error('Model capacity discovery incomplete');
       conversations.push(n);
-      const retained = new Set();
+      const retained = new Set(),
+        decisions = new Set();
       for (const f of await readdir(join(actor, n))) {
+        const decision = /^([a-f0-9-]{36})\.decision\.json(?:\.tmp)?$/i.exec(f);
+        if (decision && uuid.test(decision[1])) {
+          let st;
+          try {
+            st = await lstat(join(actor, n, f));
+          } catch (e) {
+            if (f.endsWith('.tmp') && missing(e)) continue;
+            throw e;
+          }
+          if (!st.isFile() || st.isSymbolicLink() || st.mode & 0o077 || st.size > 4096)
+            throw Error('Private bounded model decision required');
+          decisions.add(decision[1]);
+          continue;
+        }
         const staged = f.endsWith('.json.tmp'),
           id = f.slice(0, staged ? -9 : -5);
         if (!uuid.test(id) || (!staged && !f.endsWith('.json')))
@@ -315,6 +391,8 @@ export async function createChatModelPatches({
         }
         retained.add(id);
       }
+      if ([...decisions].some((id) => !retained.has(id)))
+        throw Error('Orphan model decision needs review');
       count += retained.size;
     }
     if (conversations.length > 30 || count > 50) throw Error('Model retained capacity exceeded');
@@ -399,6 +477,57 @@ export async function createChatModelPatches({
         return view(j, last);
       });
     },
+    /** Explicit human-only approval; never registered as a model tool and does not publish geometry. */
+    async approve(/** @type {any} */ input, /** @type {any} */ request) {
+      if (
+        !exact(input, ['actionId', 'conversationId', 'digest']) ||
+        !uuid.test(input.actionId) ||
+        !uuid.test(input.conversationId) ||
+        !hex.test(input.digest)
+      )
+        throw Error('Exact reviewed model proposal required');
+      const a = await access(request);
+      requireOwner(a);
+      const f = await folders(a.scope, input.conversationId);
+      if (!f?.conversation) throw Error('Saved model proposal unavailable');
+      const conversation = f.conversation;
+      return withChatLock(join(f.actor, '.capacity'), async () => {
+        const j = await load(
+          join(conversation, input.actionId + '.json'),
+          a.scope,
+          input.conversationId
+        );
+        if (j.digest !== input.digest) throw Error('Reviewed model digest differs');
+        const path = join(conversation, input.actionId + '.decision.json'),
+          old = await readDecision(path, j);
+        const current = await access(request);
+        requireOwner(current);
+        if (canonicalJSON(binding(current.scope)) !== canonicalJSON(j.proposal.binding))
+          throw Error('Model owner scope changed');
+        if (old) {
+          if (old.staged) await promote(path);
+          return view(j, current);
+        }
+        if (canonicalJSON(base(current)) !== canonicalJSON(j.proposal.baseline))
+          throw Error('Model baseline changed; prepare a new review');
+        const sources = await sourceChecks(j.proposal.draft, current);
+        if (canonicalJSON(sources) !== canonicalJSON(j.proposal.sources))
+          throw Error('Reviewed original changed');
+        const last = await fresh(current, request);
+        requireOwner(last);
+        buildModelPatchCandidate(last.home, j.proposal.draft);
+        const decision = {
+          kind: 'model-approval',
+          binding: j.proposal.binding,
+          actionId: j.proposal.actionId,
+          conversationId: j.proposal.conversationId,
+          proposalDigest: j.digest,
+          decidedAt: new Date().toISOString()
+        };
+        await save(path, { schema: 1, decision, digest: sha(decision) });
+        return view(j, last);
+      });
+    },
     /** Read-only, exact current-version display. Original receipts remain explicitly preparation-time only. */
     async preview(/** @type {any} */ input, /** @type {any} */ request) {
       if (
@@ -469,7 +598,7 @@ export async function createChatModelPatches({
       const levelId = before.walls.find((w) => w.id === wallIds[0])?.level,
         level = before.levels.find((l) => l.id === levelId);
       const out = {
-        review: view(j, current),
+        review: await view(j, current),
         units: 'feet',
         geometryBasis: 'saved-model-display',
         levelId,
@@ -487,12 +616,22 @@ export async function createChatModelPatches({
         f = await folders(a.scope, conversationId);
       if (!f?.conversation) return [];
       await capacity(f.actor);
-      const out = [];
-      for (const name of await readdir(f.conversation)) {
+      const out = [],
+        names = await readdir(f.conversation);
+      for (const name of names.filter((n) =>
+        /^[a-f0-9-]{36}\.decision\.json(?:\.tmp)?$/i.test(n)
+      )) {
+        const id = name.slice(0, 36),
+          saved = await existing(a, { conversationId }, id);
+        if (!saved || saved.staged) throw Error('Approved model proposal needs exact recovery');
+        await readDecision(join(f.conversation, id + '.decision.json'), saved.j);
+      }
+      for (const name of names) {
+        if (/^[a-f0-9-]{36}\.decision\.json(?:\.tmp)?$/i.test(name)) continue;
         if (name.endsWith('.json.tmp') && uuid.test(name.slice(0, -9))) continue;
         if (!uuid.test(name.slice(0, -5)) || !name.endsWith('.json'))
           throw Error('Model discovery incomplete');
-        out.push(view(await load(join(f.conversation, name), a.scope, conversationId), a));
+        out.push(await view(await load(join(f.conversation, name), a.scope, conversationId), a));
       }
       return out.sort((a, b) => a.actionId.localeCompare(b.actionId));
     }

@@ -363,3 +363,135 @@ test('solid walls with omitted or null optional openings still have an exact dim
     expect(p.walls[0].after.thicknessFeet).toBe(0.6);
   }
 });
+
+// These tests catch approval bypasses, stale decisions, and restart replacement of an immutable decision.
+test('exact owner approval is durable and retry preserves the decision without applying geometry', async () => {
+  const f = await fixture(),
+    raw = JSON.stringify(f.home);
+  const a = await f.patch.prepare(modelPatchDraft(), f.context, f.request);
+  const input = { actionId: a.actionId, conversationId: a.conversationId, digest: a.digest };
+  expect(typeof f.patch.approve).toBe('function');
+  const one = await f.patch.approve(input, f.request);
+  expect(one.status).toBe('model-approval-recorded');
+  const restarted = await createChatModelPatches(f.options);
+  expect(await restarted.approve(input, f.request)).toEqual(one);
+  expect((await restarted.list(f.context.conversationId, f.request))[0].approvalRecorded).toBe(
+    true
+  );
+  expect(JSON.stringify(f.home)).toBe(raw);
+  const file = (await proposalFile(f, a)).replace('.json', '.decision.json');
+  const saved = await readFile(file, 'utf8');
+  expect(saved).not.toContain('synthetic-caller');
+  expect(saved).not.toContain('userOverrides');
+  expect(saved).not.toContain('synthetic-model-key');
+});
+test('contributor can propose but only the exact current owner can approve', async () => {
+  const f = await fixture(),
+    a = await f.patch.prepare(modelPatchDraft(), f.context, f.request);
+  expect(typeof f.patch.approve).toBe('function');
+  f.setRole('contributor');
+  await expect(
+    f.patch.approve(
+      { actionId: a.actionId, conversationId: a.conversationId, digest: a.digest },
+      f.request
+    )
+  ).rejects.toThrow(/owner/);
+  const file = (await proposalFile(f, a)).replace('.json', '.decision.json');
+  await expect(readFile(file)).rejects.toThrow();
+});
+test('stale home and changed original checks reject approval without saving a decision', async () => {
+  for (const change of ['home', 'source']) {
+    const f = await fixture(),
+      a = await f.patch.prepare(modelPatchDraft(), f.context, f.request);
+    const p = await createChatModelPatches({
+      ...f.options,
+      verifySources: async () => [
+        { id: 'manual', sha256: (change === 'source' ? 'b' : 'a').repeat(64) }
+      ]
+    });
+    expect(typeof p.approve).toBe('function');
+    if (change === 'home') f.home.contacts.push({ id: 'later', name: 'Later' });
+    await expect(
+      p.approve(
+        { actionId: a.actionId, conversationId: a.conversationId, digest: a.digest },
+        f.request
+      )
+    ).rejects.toThrow(/changed/);
+    await expect(
+      readFile((await proposalFile(f, a)).replace('.json', '.decision.json'))
+    ).rejects.toThrow();
+  }
+});
+test('role loss during original hashing prevents approval persistence', async () => {
+  const f = await fixture(),
+    a = await f.patch.prepare(modelPatchDraft(), f.context, f.request);
+  const p = await createChatModelPatches({
+    ...f.options,
+    verifySources: async () => {
+      f.setRole('contributor');
+      return [{ id: 'manual', sha256: 'a'.repeat(64) }];
+    }
+  });
+  expect(typeof p.approve).toBe('function');
+  await expect(
+    p.approve(
+      { actionId: a.actionId, conversationId: a.conversationId, digest: a.digest },
+      f.request
+    )
+  ).rejects.toThrow(/owner/);
+  await expect(
+    readFile((await proposalFile(f, a)).replace('.json', '.decision.json'))
+  ).rejects.toThrow();
+});
+test('approval requires the exact saved digest and rejects changed decisions rather than overwriting them', async () => {
+  const f = await fixture(),
+    a = await f.patch.prepare(modelPatchDraft(), f.context, f.request),
+    input = { actionId: a.actionId, conversationId: a.conversationId, digest: a.digest };
+  expect(typeof f.patch.approve).toBe('function');
+  await expect(f.patch.approve({ ...input, digest: 'b'.repeat(64) }, f.request)).rejects.toThrow(
+    /digest/
+  );
+  await f.patch.approve(input, f.request);
+  const file = (await proposalFile(f, a)).replace('.json', '.decision.json');
+  const j = JSON.parse(await readFile(file, 'utf8'));
+  j.decision.proposalDigest = 'b'.repeat(64);
+  await writeFile(file, JSON.stringify(j));
+  await expect(f.patch.approve(input, f.request)).rejects.toThrow(/decision/);
+  expect(JSON.parse(await readFile(file, 'utf8')).decision.proposalDigest).toBe('b'.repeat(64));
+});
+test('complete interrupted decision recovers its exact timestamp and partial decisions remain held', async () => {
+  const f = await fixture(),
+    a = await f.patch.prepare(modelPatchDraft(), f.context, f.request),
+    input = { actionId: a.actionId, conversationId: a.conversationId, digest: a.digest };
+  expect(typeof f.patch.approve).toBe('function');
+  const one = await f.patch.approve(input, f.request);
+  const file = (await proposalFile(f, a)).replace('.json', '.decision.json');
+  await rename(file, file + '.tmp');
+  const p = await createChatModelPatches(f.options);
+  expect(await p.approve(input, f.request)).toEqual(one);
+  await rename(file, file + '.tmp');
+  await writeFile(file + '.tmp', '{');
+  await expect(p.approve(input, f.request)).rejects.toThrow();
+  expect(await readFile(file + '.tmp', 'utf8')).toBe('{');
+});
+test('a corrupt decision stage cannot hide behind a valid final owner decision', async () => {
+  const f = await fixture(),
+    a = await f.patch.prepare(modelPatchDraft(), f.context, f.request),
+    input = { actionId: a.actionId, conversationId: a.conversationId, digest: a.digest };
+  await f.patch.approve(input, f.request);
+  const file = (await proposalFile(f, a)).replace('.json', '.decision.json');
+  await writeFile(file + '.tmp', '{', { mode: 0o600 });
+  await expect(f.patch.list(f.context.conversationId, f.request)).rejects.toThrow();
+  await expect(f.patch.approve(input, f.request)).rejects.toThrow();
+  expect(await readFile(file + '.tmp', 'utf8')).toBe('{');
+});
+test('a retained decision with only an unreadable proposal stage is held instead of disappearing from the list', async () => {
+  const f = await fixture(),
+    a = await f.patch.prepare(modelPatchDraft(), f.context, f.request),
+    input = { actionId: a.actionId, conversationId: a.conversationId, digest: a.digest };
+  await f.patch.approve(input, f.request);
+  const file = await proposalFile(f, a);
+  await rename(file, file + '.tmp');
+  await writeFile(file + '.tmp', '{');
+  await expect(f.patch.list(f.context.conversationId, f.request)).rejects.toThrow();
+});
