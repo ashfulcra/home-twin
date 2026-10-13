@@ -75,3 +75,37 @@ test('source lookup is ID-bound to current home and revocation stops reads', asy
   await expect(tools.execute('read_home', {})).rejects.toThrow(/revoked/i);
   expect(reads).toBe(1);
 });
+test('architecture discovery is bounded and paginated so exact wall IDs need not be known in advance', async () => {
+  const walls = Array.from({ length: 45 }, (_, i) => ({
+    id: 'wall-' + i,
+    level: 'main',
+    roomId: 'living',
+    openings: []
+  }));
+  const modelHome = {
+    ...home,
+    reconstruction: {
+      buildingModel: {
+        rooms: [{ id: 'living', name: 'Living Room', level: 'main' }],
+        walls,
+        features: [],
+        roofs: []
+      }
+    }
+  };
+  const t = createChatHomeTools({ authorize: async () => ({ home: modelHome, role: 'viewer' }) });
+  const args = { kind: 'walls', levelId: 'main', roomId: 'living', cursor: 0 },
+    a = await t.execute('list_model_components', args),
+    b = await t.execute('list_model_components', { ...args, cursor: a.nextCursor });
+  expect(a.components).toHaveLength(40);
+  expect(a.more).toBe(true);
+  expect(b.components).toHaveLength(5);
+  expect(b.more).toBe(false);
+  expect(b.components[4].id).toBe('wall-44');
+  expect(
+    (await t.execute('list_model_components', { ...args, kind: 'rooms', roomId: '', cursor: 0 }))
+      .components[0].name
+  ).toBe('Living Room');
+  await expect(t.execute('list_model_components', { ...args, root: '/Other' })).rejects.toThrow();
+  await expect(t.execute('list_model_components', { ...args, cursor: -1 })).rejects.toThrow();
+});

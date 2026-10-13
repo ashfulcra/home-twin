@@ -1,8 +1,19 @@
+import { chatModelDefinition, chatModelDraft } from './chat-model-tools.mjs';
 import { searchHomeKnowledge } from '../src/lib/home/knowledge-search.js';
 import { chatActionDefinitions, chatActionDraft } from './chat-action-tools.mjs';
 /** @type {any[]} */
 const definitions = [
-  ['read_home', 'Read current home overview', {}],
+  ['read_home', 'Read current home overview and bounded source IDs', {}],
+  [
+    'list_model_components',
+    'Discover paginated current model room/wall/feature/roof IDs; use these exact IDs for model reads and proposals',
+    {
+      kind: { type: 'string', enum: ['rooms', 'walls', 'features', 'roofs'] },
+      levelId: { type: 'string', maxLength: 200 },
+      roomId: { type: 'string', maxLength: 200 },
+      cursor: { type: 'integer', minimum: 0, maximum: 5000 }
+    }
+  ],
   [
     'read_source_pages',
     'Read up to four numbered pages from a home PDF',
@@ -44,8 +55,18 @@ const definitions = [
   }
 }));
 /** Fresh current caller authority is injected; arbitrary paths and commands are absent. @param {any} options */
-export function createChatHomeTools({ authorize, readSource, uploadedSource, prepareAction }) {
-  const available = prepareAction ? [...definitions, ...chatActionDefinitions] : definitions;
+export function createChatHomeTools({
+  authorize,
+  readSource,
+  uploadedSource,
+  prepareAction,
+  prepareModelPatch
+}) {
+  const available = [
+    ...definitions,
+    ...(prepareAction ? chatActionDefinitions : []),
+    ...(prepareModelPatch ? [chatModelDefinition] : [])
+  ];
   return {
     definitions: available /** @param {string} name @param {any} args */,
     async execute(/** @type {string} */ name, /** @type {any} */ args) {
@@ -78,14 +99,59 @@ export function createChatHomeTools({ authorize, readSource, uploadedSource, pre
             args.ids.some((/** @type {any} */ id) => typeof id !== 'string' || id.length > 200)))
       )
         throw Error('Invalid home tool arguments');
+      if (
+        name === 'list_model_components' &&
+        (!['rooms', 'walls', 'features', 'roofs'].includes(args.kind) ||
+          typeof args.levelId !== 'string' ||
+          typeof args.roomId !== 'string' ||
+          [args.levelId, args.roomId].some(
+            (s) => s.length > 200 || (s && !/^[a-z0-9][a-z0-9._-]{0,199}$/i.test(s))
+          ) ||
+          !Number.isSafeInteger(args.cursor) ||
+          args.cursor < 0 ||
+          args.cursor > 5000)
+      )
+        throw Error('Invalid model index arguments');
       const access = await authorize(),
         home = access.home;
       if (!home || !['viewer', 'contributor', 'maintainer'].includes(access.role))
         throw Error('Current home access required');
+      if (name === 'prepare_model_patch') {
+        if (!prepareModelPatch || !['contributor', 'maintainer'].includes(access.role))
+          throw Error('Current model contribution role required');
+        return prepareModelPatch(chatModelDraft(args));
+      }
       if (name.startsWith('prepare_')) {
         if (!prepareAction || !['contributor', 'maintainer'].includes(access.role))
           throw Error('Current contribution role required');
         return prepareAction(chatActionDraft(name, args));
+      }
+      if (name === 'list_model_components') {
+        const model = home.reconstruction?.buildingModel;
+        if (!model || !Array.isArray(model[args.kind])) throw Error('Home model unavailable');
+        const rows = model[args.kind].filter(
+          (/** @type {any} */ r) =>
+            (!args.levelId || r.level === args.levelId) &&
+            (!args.roomId || (args.kind === 'rooms' ? r.id : r.roomId) === args.roomId)
+        );
+        const page = rows.slice(args.cursor, args.cursor + 40),
+          valid = page.filter(
+            (/** @type {any} */ r) =>
+              typeof r.id === 'string' && /^[a-z0-9][a-z0-9._-]{0,199}$/i.test(r.id)
+          );
+        return {
+          revision: home.revision,
+          kind: args.kind,
+          components: valid.map((/** @type {any} */ r) => ({
+            id: r.id,
+            ...(typeof r.name === 'string' ? { name: r.name.slice(0, 160) } : {}),
+            ...(typeof r.level === 'string' ? { level: r.level.slice(0, 200) } : {}),
+            ...(typeof r.roomId === 'string' ? { roomId: r.roomId.slice(0, 200) } : {})
+          })),
+          unsupportedCount: page.length - valid.length,
+          more: args.cursor + 40 < rows.length,
+          nextCursor: args.cursor + page.length
+        };
       }
       if (name === 'read_home')
         return {
@@ -99,6 +165,17 @@ export function createChatHomeTools({ authorize, readSource, uploadedSource, pre
             .slice(0, 40)
             .map((/** @type {any} */ e) => ({ id: e.id, name: e.name, system: e.system })),
           sourceCount: (home.sources ?? []).length,
+          sources: (home.sources ?? [])
+            .slice(0, 40)
+            .filter(
+              (/** @type {any} */ s) =>
+                typeof s.id === 'string' && /^[a-z0-9][a-z0-9._-]{0,199}$/i.test(s.id)
+            )
+            .map((/** @type {any} */ s) => ({
+              id: s.id,
+              title: typeof s.title === 'string' ? s.title.slice(0, 160) : s.id
+            })),
+          moreSources: (home.sources ?? []).length > 40,
           modelAvailable: !!home.reconstruction?.buildingModel
         };
       if (name === 'search_records')

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import HomeModelReview from './HomeModelReview.svelte';
   import { onMount, tick } from 'svelte';
   import { mergeRecordActions } from '$lib/home/chat-record-state.js';
   import { recordCard } from '$lib/home/chat-record-card.js';
@@ -21,6 +22,8 @@
     pending: any = $state(null),
     callerId = '';
   let recordActions: any[] = $state([]);
+  let modelReviews: any[] = $state([]);
+  let canReviewModel = $state(false);
   let canSaveRecords = $state(false),
     savingId = $state('');
   let saveErrors: Record<string, string> = $state({});
@@ -46,7 +49,8 @@
     read_home: 'Reading home records',
     search_records: 'Finding records',
     read_source: 'Reading the original',
-    read_model_region: 'Checking the home model'
+    read_model_region: 'Checking the home model',
+    prepare_model_patch: 'Preparing a model preview'
   };
   function remember() {
     try {
@@ -62,11 +66,15 @@
       if (r.status === 403 && writeOnly) {
         canSaveRecords = false;
         recordActions = [];
+        modelReviews = [];
+        canReviewModel = false;
         void start();
       } else if (r.status === 401 || r.status === 403) {
         turns = [];
         events = [];
         recordActions = [];
+        modelReviews = [];
+        canReviewModel = false;
         canSaveRecords = false;
         reader.select('');
         available = false;
@@ -86,6 +94,9 @@
       if (!value || disposed) return;
       turns = value.turns;
       recordActions = mergeRecordActions(recordActions, value.actions ?? [], conversationId);
+      modelReviews = (value.modelReviews ?? []).filter(
+        (a: any) => a.conversationId === conversationId
+      );
       for (const item of value.events) {
         if (!events.some((e) => e.cursor === item.cursor)) events.push(item);
       }
@@ -130,6 +141,7 @@
       available = value.available === true;
       canUpload = value.uploads === true;
       canSaveRecords = value.recordActions === true;
+      canReviewModel = value.modelReviews === true;
       try {
         conversationId = localStorage.getItem(key) ?? '';
       } catch {}
@@ -145,6 +157,35 @@
       ready = true;
       errorMessage = e instanceof Error ? e.message : 'Chat is temporarily unavailable.';
     }
+  }
+  async function modelPreview(action: any) {
+    if (!canReviewModel || action.conversationId !== conversationId) return null;
+    const generation = reader.generation,
+      selected = conversationId;
+    const result = await response(
+      '/api/home/chat/model-preview',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: selected,
+          actionId: action.actionId,
+          digest: action.digest
+        })
+      },
+      true
+    );
+    if (
+      disposed ||
+      generation !== reader.generation ||
+      selected !== conversationId ||
+      !canReviewModel ||
+      result.review?.actionId !== action.actionId ||
+      result.review?.digest !== action.digest ||
+      result.review?.conversationId !== selected
+    )
+      return null;
+    return result;
   }
   async function saveRecord(action: any) {
     if (
@@ -318,6 +359,7 @@
   function newConversation() {
     if (savingId || running) return;
     recordActions = [];
+    modelReviews = [];
     resumedRecords.clear();
     saveErrors = {};
     conversationId = crypto.randomUUID();
@@ -401,6 +443,10 @@
             This reply couldn’t finish. You can try a new message.
           </p>{/if}
       </article>
+      {#if canReviewModel}{#each modelReviews.filter((a) => a.turnId === turn.input.turnId) as review (review.actionId)}<HomeModelReview
+            {review}
+            loadPreview={modelPreview}
+          />{/each}{/if}
       {#each recordActions.filter((a) => a.turnId === turn.input.turnId) as action (action.actionId)}
         {@const card = recordCard(action.draft, {
           ...home,

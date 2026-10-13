@@ -130,3 +130,46 @@ test('valid typed-record arguments cross the provider boundary while read tools 
   expect((await collect('prepare_contact'))[0].arguments).toBe(raw);
   await expect(collect('read_source')).rejects.toThrow(/limit/i);
 });
+
+test('valid model patch arguments cross the provider boundary while read tools retain their small bound', async () => {
+  const raw = JSON.stringify({
+    note: '界'.repeat(1800),
+    sourceIds: [],
+    edits: [
+      {
+        target: 'opening',
+        wallId: 'wall',
+        openingId: 'door',
+        field: 'widthFeet',
+        expected: 3,
+        value: 3.5
+      }
+    ]
+  });
+  async function collect(/** @type {string} */ name) {
+    const provider = nativeAnthropicProvider(
+      { provider: 'anthropic', model: 'explicit', key: 'synthetic-key' },
+      async () =>
+        response([
+          {
+            type: 'content_block_start',
+            index: 0,
+            content_block: { type: 'tool_use', id: 'typed', name, input: {} }
+          },
+          {
+            type: 'content_block_delta',
+            index: 0,
+            delta: { type: 'input_json_delta', partial_json: raw }
+          },
+          { type: 'content_block_stop', index: 0 },
+          { type: 'message_delta', delta: { stop_reason: 'tool_use' } },
+          { type: 'message_stop' }
+        ])
+    );
+    const out = [];
+    for await (const item of provider.stream([])) out.push(item);
+    return out;
+  }
+  expect((await collect('prepare_model_patch'))[0].arguments).toBe(raw);
+  await expect(collect('read_source')).rejects.toThrow(/limit/i);
+});

@@ -4,6 +4,7 @@ vi.mock('$lib/server/home-access.js', () => ({ resolveHome: mocks.resolve }));
 vi.mock('$lib/server/chat-service.js', () => ({ callChatService: mocks.call }));
 import { GET, POST } from '../../routes/api/home/chat/+server.js';
 import { GET as events } from '../../routes/api/home/chat/events/+server.js';
+import { POST as previewModel } from '../../routes/api/home/chat/model-preview/+server.js';
 import { POST as saveRecord } from '../../routes/api/home/chat/actions/+server.js';
 import { POST as cancel } from '../../routes/api/home/chat/cancel/+server.js';
 const conversationId = '11111111-1111-4111-8111-111111111111',
@@ -103,5 +104,26 @@ test('record approval refuses viewers, anonymous callers, injected scope and mal
     { ...approval, digest: 'a'.repeat(17000) }
   ])
     await expect(saveRecord(event(body))).rejects.toMatchObject({ status: 400 });
+  expect(mocks.call).not.toHaveBeenCalled();
+});
+
+test('model preview relays an exact private review with fresh current-writer scope and no approval effect', async () => {
+  mocks.resolve.mockResolvedValue({ home: { id: 'example' }, role: 'maintainer' });
+  const r = await previewModel(event(approval));
+  expect(r.headers.get('cache-control')).toBe('private, no-store');
+  expect(mocks.call).toHaveBeenCalledExactlyOnceWith('current-caller', 'example', 'preview-model', {
+    input: approval
+  });
+});
+test('model preview refuses anonymous/viewer and injected scope before worker access', async () => {
+  await expect(previewModel(event(approval))).rejects.toMatchObject({ status: 403 });
+  await expect(previewModel(event(approval, false))).rejects.toMatchObject({ status: 401 });
+  mocks.resolve.mockResolvedValue({ home: { id: 'example' }, role: 'contributor' });
+  for (const body of [
+    { ...approval, root: '/Other' },
+    { ...approval, digest: 'bad' },
+    { ...approval, actionId: '../x' }
+  ])
+    await expect(previewModel(event(body))).rejects.toMatchObject({ status: 400 });
   expect(mocks.call).not.toHaveBeenCalled();
 });

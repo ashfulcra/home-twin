@@ -113,7 +113,8 @@ export function nativeAnthropicProvider(config, send = fetch) {
                   'prepare_contact',
                   'prepare_maintenance',
                   'prepare_schedule',
-                  'prepare_task_completion'
+                  'prepare_task_completion',
+                  'prepare_model_patch'
                 ].includes(call.name)
                   ? 16000
                   : 4000)

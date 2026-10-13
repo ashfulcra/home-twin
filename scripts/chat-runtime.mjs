@@ -18,13 +18,15 @@ function toolReceipt(name, value, secrets) {
       'read_source',
       'read_source_pages',
       'read_model_region',
+      'list_model_components',
       'prepare_home_update',
       'prepare_note',
       'prepare_fact',
       'prepare_contact',
       'prepare_maintenance',
       'prepare_schedule',
-      'prepare_task_completion'
+      'prepare_task_completion',
+      'prepare_model_patch'
     ].includes(name)
   )
     throw Error('Unsupported tool receipt');
@@ -41,7 +43,9 @@ function toolReceipt(name, value, secrets) {
         'submitted',
         'publication-pending',
         'held-for-review',
-        'accepted'
+        'accepted',
+        'needs-model-review',
+        'stale-model'
       ].includes(value.status)
     )
       result.status = value.status;
@@ -229,7 +233,8 @@ export async function runChatTurn({
                 'prepare_contact',
                 'prepare_maintenance',
                 'prepare_schedule',
-                'prepare_task_completion'
+                'prepare_task_completion',
+                'prepare_model_patch'
               ].includes(item.name)
                 ? 16000
                 : 4000) ||

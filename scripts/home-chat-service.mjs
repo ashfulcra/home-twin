@@ -9,6 +9,7 @@ import { runChatTurn } from './chat-runtime.mjs';
 import { loadHouseModels } from './chat-model-settings.mjs';
 import { createChatHomeTools } from './chat-home-tools.mjs';
 import { createChatUploads } from './chat-uploads.mjs';
+import { createChatModelPatches } from './chat-model-patches.mjs';
 import { createChatActions } from './chat-actions.mjs';
 import { chatActionSourceVerifier } from './chat-action-sources.mjs';
 import { createChatActionPublisher } from './chat-action-publish.mjs';
@@ -28,7 +29,9 @@ export async function createChatWorker({
   archive,
   uploads,
   actions,
-  actionsFor
+  actionsFor,
+  modelReviews,
+  modelReviewsFor
 }) {
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const root = await lstat(directory);
@@ -93,10 +96,14 @@ export async function createChatWorker({
         scope = access.scope;
       const selectedModel = modelFor ? modelFor(scope.homeId) : model;
       const selectedActions = actionsFor ? actionsFor(scope.homeId) : actions;
+      const selectedReviews = modelReviewsFor ? modelReviewsFor(scope.homeId) : modelReviews;
       if (request.action === 'status')
         return {
           available: !!selectedModel,
           ...(uploads ? { uploads: ['maintainer', 'contributor'].includes(scope.role) } : {}),
+          ...(selectedReviews
+            ? { modelReviews: ['maintainer', 'contributor'].includes(scope.role) }
+            : {}),
           ...(selectedActions
             ? { recordActions: ['maintainer', 'contributor'].includes(scope.role) }
             : {})
@@ -115,6 +122,16 @@ export async function createChatWorker({
         });
       }
       const journal = await journalFor(scope);
+      if (request.action === 'preview-model') {
+        if (!selectedReviews || !['maintainer', 'contributor'].includes(scope.role))
+          throw Error('Current model contribution role required');
+        if (!request.input?.conversationId) throw Error('Exact model review required');
+        await journal.readConversation(request.input.conversationId);
+        return selectedReviews.preview(request.input, {
+          token: request.token,
+          homeId: scope.homeId
+        });
+      }
       if (request.action === 'apply-record') {
         if (!selectedActions || !['maintainer', 'contributor'].includes(scope.role))
           throw Error('Current contribution role required');
@@ -203,6 +220,15 @@ export async function createChatWorker({
             selectedActions && ['maintainer', 'contributor'].includes(scope.role)
               ? async (/** @type {any} */ draft) =>
                   selectedActions.prepare(
+                    draft,
+                    { conversationId: input.conversationId, turnId: input.turnId },
+                    { token: request.token, homeId: scope.homeId }
+                  )
+              : undefined,
+          prepareModelPatch:
+            selectedReviews && ['maintainer', 'contributor'].includes(scope.role)
+              ? async (/** @type {any} */ draft) =>
+                  selectedReviews.prepare(
                     draft,
                     { conversationId: input.conversationId, turnId: input.turnId },
                     { token: request.token, homeId: scope.homeId }
@@ -304,6 +330,16 @@ export async function createChatWorker({
                         )
                       }
                     }))
+                  : []
+              }
+            : {}),
+          ...(selectedReviews
+            ? {
+                modelReviews: ['maintainer', 'contributor'].includes(scope.role)
+                  ? await selectedReviews.list(request.conversationId, {
+                      token: request.token,
+                      homeId: scope.homeId
+                    })
                   : []
               }
             : {}),
@@ -463,6 +499,19 @@ export async function startChatService(config) {
           ) => publishers.get(current.scope.homeId).resolvePublication(record, current, context)
         })
       : null;
+    const reviewHomes = new Set(
+      config.homes
+        .filter((/** @type {any} */ h) => h.modelReviews === true)
+        .map((/** @type {any} */ h) => h.homeId)
+    );
+    const modelReviews = reviewHomes.size
+      ? await createChatModelPatches({
+          directory: join(config.directory, 'model-reviews'),
+          authorize,
+          verifySources,
+          secretsFor: (/** @type {any} */ scope) => models.get(scope.homeId)?.secrets ?? []
+        })
+      : null;
     worker = await createChatWorker({
       directory: join(config.directory, 'runs'),
       authorize,
@@ -470,6 +519,8 @@ export async function startChatService(config) {
       readSource: chatSourceReader(),
       archive,
       uploads,
+      modelReviewsFor: (/** @type {string} */ homeId) =>
+        reviewHomes.has(homeId) ? modelReviews : null,
       actionsFor: (/** @type {string} */ homeId) => (publishers.has(homeId) ? actions : null)
     });
   } catch (e) {
