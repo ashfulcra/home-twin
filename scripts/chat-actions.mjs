@@ -56,8 +56,31 @@ export async function createChatActions({
       throw Error('Current contribution role required');
     return { ...a, scope, token: request.token };
   }
-  async function folder(/** @type {any} */ scope, /** @type {string} */ conversationId) {
+  async function folder(
+    /** @type {any} */ scope,
+    /** @type {string} */ conversationId,
+    create = true
+  ) {
     if (!uuid.test(conversationId)) throw Error('Choose a conversation');
+    if (!create) {
+      const path = join(directory, scope.homeId, scope.principalId, conversationId);
+      for (const current of [
+        directory,
+        join(directory, scope.homeId),
+        join(directory, scope.homeId, scope.principalId),
+        path
+      ]) {
+        try {
+          const st = await lstat(current);
+          if (!st.isDirectory() || st.isSymbolicLink() || st.mode & 0o077)
+            throw Error('Private action directory required');
+        } catch (e) {
+          if (missing(e)) return null;
+          throw e;
+        }
+      }
+      return path;
+    }
     await privateDir(join(directory, scope.homeId));
     const actor = await privateDir(join(directory, scope.homeId, scope.principalId));
     const conversations = await readdir(actor);
@@ -195,8 +218,9 @@ export async function createChatActions({
           identity.slice(17, 20) +
           '-' +
           identity.slice(20, 32),
-        dir = await folder(a.scope, context.conversationId),
-        path = join(dir, actionId + '.json');
+        dir = await folder(a.scope, context.conversationId);
+      if(!dir)throw Error('Private proposal directory required');
+      const path = join(dir, actionId + '.json');
       return withChatLock(path, async () => {
         try {
           return view(await load(path, a.scope));
@@ -231,8 +255,9 @@ export async function createChatActions({
     async list(/** @type {string} */ conversationId, /** @type {any} */ request) {
       if (!uuid.test(conversationId)) throw Error('Choose a conversation');
       const a = await access(request),
-        dir = await folder(a.scope, conversationId),
-        names = (await readdir(dir)).filter((n) => n.endsWith('.json'));
+        dir = await folder(a.scope, conversationId, false);
+      if (!dir) return [];
+      const names = (await readdir(dir)).filter((n) => n.endsWith('.json'));
       if (names.length > 100) throw Error('Action discovery incomplete');
       const out = [];
       for (const name of names) {
@@ -254,8 +279,9 @@ export async function createChatActions({
       )
         throw Error('Exact reviewed action required');
       let a = await access(request);
-      const dir = await folder(a.scope, input.conversationId),
-        path = join(dir, input.actionId + '.json');
+      const dir = await folder(a.scope, input.conversationId, false);
+      if (!dir) throw Error('Exact reviewed action unavailable');
+      const path = join(dir, input.actionId + '.json');
       return withChatLock(path, async () => {
         const j = await load(path, a.scope);
         if (j.digest !== input.digest || j.proposal.conversationId !== input.conversationId)

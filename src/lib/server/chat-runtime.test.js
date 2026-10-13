@@ -3,6 +3,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { persistentChatJournal } from '../../../scripts/chat-journal.mjs';
+import { createChatHomeTools } from '../../../scripts/chat-home-tools.mjs';
 import { runChatTurn } from '../../../scripts/chat-runtime.mjs';
 const scope = {
     homeId: 'example',
@@ -267,4 +268,40 @@ test('attached source IDs are resolved through current scoped tools before infer
   await runChatTurn({ ...x, input: attached });
   expect(reads).toBe(1);
   expect(JSON.stringify(got)).toContain('Synthetic note');
+});
+
+test('typed preparation completes the actual provider/tool loop with only a bounded proposal receipt', async () => {
+  const x = await setup();
+  let rounds = 0,
+    prepared = 0;
+  x.tools = createChatHomeTools({
+    authorize: async () => ({ home: { id: 'example' }, role: 'maintainer' }),
+    prepareAction: async () => {
+      prepared++;
+      return {
+        status: 'proposed',
+        actionId: input.turnId,
+        digest: 'a'.repeat(64),
+        draft: { text: '/private/not-in-receipt' }
+      };
+    }
+  });
+  x.model = {
+    async *stream() {
+      if (rounds++ === 0)
+        yield {
+          type: 'tool',
+          name: 'prepare_note',
+          arguments: JSON.stringify({ text: '界'.repeat(1800), entityId: '', sourceIds: [] }),
+          callId: 'prepare-note'
+        };
+      else yield { type: 'text', text: 'Ready for review' };
+    }
+  };
+  expect((await runChatTurn(x)).status).toBe('completed');
+  expect(prepared).toBe(1);
+  expect(rounds).toBe(2);
+  const events = await x.journal.readEvents(input.conversationId);
+  expect(JSON.stringify(events)).not.toContain('/private/not-in-receipt');
+  expect(JSON.stringify(events)).toContain('proposed');
 });

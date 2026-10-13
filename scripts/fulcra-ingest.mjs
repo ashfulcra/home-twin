@@ -4,9 +4,9 @@ import {createHash} from 'node:crypto';
 import {auditHomeSources} from './source-audit.mjs';
 import {ingestHome} from '../src/lib/home/ingestion.js';
 /** Tokens remain in memory; no whole-user-info response is printed or persisted.
- * @param {string} homeId @param {{root?:string,checkSources?:boolean}} options */
+ * @param {string} homeId @param {{root?:string,checkSources?:boolean,sourceMaxBytes?:number}} options */
 export async function syncHome(homeId,options={}){return createMaintainerClient(homeId,options).read();}
-/** @param {string} homeId @param {{root?:string,checkSources?:boolean}} options */
+/** @param {string} homeId @param {{root?:string,checkSources?:boolean,sourceMaxBytes?:number}} options */
 export function createMaintainerClient(homeId,options={}){
  if(!/^[a-z0-9][a-z0-9-]{0,79}$/.test(homeId))throw new Error('Invalid home ID');
  const root=options.root??`/shared/home-twin/${homeId}`;
@@ -15,7 +15,7 @@ export function createMaintainerClient(homeId,options={}){
  return createCallerMaintainerClient(homeId,options,token);
 }
 /** Server writes require the actual current caller. This adapter has no CLI authentication fallback.
- * @param {string} homeId @param {{root?:string,checkSources?:boolean}} options @param {string} token @param {typeof fetch} [send] */
+ * @param {string} homeId @param {{root?:string,checkSources?:boolean,sourceMaxBytes?:number}} options @param {string} token @param {typeof fetch} [send] */
 export function createCallerMaintainerClient(homeId,options,token,send=fetch){
  if(typeof token!=='string'||token.length<8||token.length>16384)throw Error('Current caller token required');
  const root=options.root??`/shared/home-twin/${homeId}`;if(!/^[a-z0-9][a-z0-9-]{0,79}$/.test(homeId)||!validHomeRoot(homeId,root))throw Error('Intended home scope required');
@@ -34,7 +34,7 @@ export function createCallerMaintainerClient(homeId,options,token,send=fetch){
   }};
 }
 /** Read only the intended home through current caller permissions.
- * @param {string} homeId @param {string} root @param {(path:string)=>Promise<Response>} get @param {{checkSources?:boolean}} options */
+ * @param {string} homeId @param {string} root @param {(path:string)=>Promise<Response>} get @param {{checkSources?:boolean,sourceMaxBytes?:number}} options */
 export async function readMaintainerHome(homeId,root,get,options={}){
  if(!/^[a-z0-9][a-z0-9-]{0,79}$/.test(homeId)||!validHomeRoot(homeId,root))throw Error('Invalid home ID or home root');
  const receipts=[];
@@ -59,7 +59,7 @@ export async function readMaintainerHome(homeId,root,get,options={}){
  if(home.ownerUserId!==userId)throw Error('Only the authenticated home maintainer can ingest household contributions');
  receipts.push({sourceUserId:userId,fileId:file.id,path:`${root}/home.json`,sha256:createHash('sha256').update(body).digest('hex')});
  const ingested=await ingestHome(home,userId,async account=>(await readFolder(`${account===userId?root:`/shared/home-twin/${homeId}`}/contributions`,account)).map(row=>row.value));
- const audit=options.checkSources?await auditHomeSources(home,root,get):null;if(audit)receipts.push(...audit.receipts);
+ const audit=options.checkSources?await auditHomeSources(home,root,get,options.sourceMaxBytes===undefined?{}:{maxBytes:options.sourceMaxBytes}):null;if(audit)receipts.push(...audit.receipts);
  const latest=await(await get(`input/v1/file_upload?path=${encodeURIComponent(root)}`)).json();const current=latest.files?.find((/** @type {any} */ f)=>f.name==='home.json');
  if(!current||current.id!==file.id||(await(await get(`input/v1/file_upload/${encodeURIComponent(current.id)}/download`)).text())!==body)throw Error('Baseline changed during intake; retry with fresh state');
  return {home,principalId:userId,root,...ingested,...(audit?{sourceChecks:audit.checks}:{}),receipts,ingestedAt:new Date().toISOString(),baselineVersion:file.id};

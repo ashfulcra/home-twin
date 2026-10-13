@@ -287,3 +287,14 @@ test('preparation reserves bytes for pending and accepted lifecycle results', as
   ).toBe('accepted');
   expect(f.writes).toBe(1);
 });
+
+test('reading thirty-one ordinary conversations consumes no proposal capacity or private directories', async () => {
+  const f = await fixture();
+  for (let i = 0; i < 31; i++) {
+    const id = String(i).padStart(8, '0') + '-1111-4111-8111-111111111111';
+    expect(await f.actions.list(id, f.request)).toEqual([]);
+  }
+  expect(f.writes).toBe(0);
+  const a = await f.actions.prepare(f.draft, f.context, f.request);
+  expect(a.status).toBe('proposed');
+});

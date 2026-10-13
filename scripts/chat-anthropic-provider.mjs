@@ -105,7 +105,20 @@ export function nativeAnthropicProvider(config, send = fetch) {
               if (!call || typeof e.delta.partial_json !== 'string')
                 throw Error('Anthropic provider invalid tool');
               call.json += e.delta.partial_json;
-              if (call.json.length > 4000) throw Error('Anthropic provider tool limit');
+              if (
+                Buffer.byteLength(call.json) >
+                ([
+                  'prepare_note',
+                  'prepare_fact',
+                  'prepare_contact',
+                  'prepare_maintenance',
+                  'prepare_schedule',
+                  'prepare_task_completion'
+                ].includes(call.name)
+                  ? 16000
+                  : 4000)
+              )
+                throw Error('Anthropic provider tool limit');
             } else if (e.type === 'content_block_stop' && calls.has(e.index)) {
               const call = calls.get(e.index);
               calls.delete(e.index);

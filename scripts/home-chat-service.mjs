@@ -9,6 +9,10 @@ import { runChatTurn } from './chat-runtime.mjs';
 import { loadHouseModels } from './chat-model-settings.mjs';
 import { createChatHomeTools } from './chat-home-tools.mjs';
 import { createChatUploads } from './chat-uploads.mjs';
+import { createChatActions } from './chat-actions.mjs';
+import { chatActionSourceVerifier } from './chat-action-sources.mjs';
+import { createChatActionPublisher } from './chat-action-publish.mjs';
+import { assertExternalState } from './maintainer-journal.mjs';
 import { chatFileClient } from './chat-file-client.mjs';
 import { processChatFile, processChatText } from './chat-file-processing.mjs';
 import { accessFulcraClient } from './access-fulcra-client.mjs';
@@ -22,7 +26,9 @@ export async function createChatWorker({
   modelFor,
   readSource,
   archive,
-  uploads
+  uploads,
+  actions,
+  actionsFor
 }) {
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const root = await lstat(directory);
@@ -85,10 +91,14 @@ export async function createChatWorker({
       const access = await bind(request),
         scope = access.scope;
       const selectedModel = modelFor ? modelFor(scope.homeId) : model;
+      const selectedActions = actionsFor ? actionsFor(scope.homeId) : actions;
       if (request.action === 'status')
         return {
           available: !!selectedModel,
-          ...(uploads ? { uploads: ['maintainer', 'contributor'].includes(scope.role) } : {})
+          ...(uploads ? { uploads: ['maintainer', 'contributor'].includes(scope.role) } : {}),
+          ...(selectedActions
+            ? { recordActions: ['maintainer', 'contributor'].includes(scope.role) }
+            : {})
         };
       if (request.action === 'file') {
         if (
@@ -104,6 +114,16 @@ export async function createChatWorker({
         });
       }
       const journal = await journalFor(scope);
+      if (request.action === 'apply-record') {
+        if (!selectedActions || !['maintainer', 'contributor'].includes(scope.role))
+          throw Error('Current contribution role required');
+        if (!request.input || !request.input.conversationId)
+          throw Error('Exact record review required');
+        await journal.readConversation(request.input.conversationId);
+        if (active.has(jobKey(scope, request.input.conversationId)))
+          throw Error('Wait for the reply before saving this record');
+        return selectedActions.apply(request.input, { token: request.token, homeId: scope.homeId });
+      }
       if (request.action === 'turn') {
         if (!selectedModel) throw Error('Model is not configured');
         const input = validateChatTurn(request.input),
@@ -138,6 +158,15 @@ export async function createChatWorker({
         const tools = createChatHomeTools({
           authorize: reauthorize,
           readSource,
+          prepareAction:
+            selectedActions && ['maintainer', 'contributor'].includes(scope.role)
+              ? async (/** @type {any} */ draft) =>
+                  selectedActions.prepare(
+                    draft,
+                    { conversationId: input.conversationId, turnId: input.turnId },
+                    { token: request.token, homeId: scope.homeId }
+                  )
+              : undefined,
           uploadedSource: uploads
             ? async (
                 /** @type {string} */ id,
@@ -218,6 +247,16 @@ export async function createChatWorker({
         return {
           events: await journal.readEvents(request.conversationId, request.cursor ?? 0),
           turns: record.turns,
+          ...(selectedActions
+            ? {
+                actions: ['maintainer', 'contributor'].includes(scope.role)
+                  ? await selectedActions.list(request.conversationId, {
+                      token: request.token,
+                      homeId: scope.homeId
+                    })
+                  : []
+              }
+            : {}),
           storage: archive
             ? await archive.status({ scope, conversationId: request.conversationId })
             : { state: 'local' }
@@ -253,6 +292,7 @@ export function configuredChatAccess(config) {
       throw Error('Current home membership required');
     return {
       home,
+      fileVersion: file.id,
       scope: validateChatScope({
         homeId,
         principalId: userId,
@@ -339,13 +379,48 @@ export async function startChatService(config) {
       ioFor: (/** @type {any} */ current) => chatFileClient(current.token, current.scope),
       secretsFor: (/** @type {any} */ scope) => models.get(scope.homeId)?.secrets ?? []
     });
+    const verifySources = chatActionSourceVerifier({ authorize, uploads });
+    /** @type {Map<string,any>} */ const publishers = new Map();
+    for (const home of config.homes) {
+      if (home.recordActions !== true) continue;
+      if (typeof home.maintainerDirectory !== 'string' || !home.maintainerDirectory)
+        throw Error('Explicit private designated-maintainer state required');
+      const state = resolve(home.maintainerDirectory);
+      await mkdir(state, { recursive: true, mode: 0o700 });
+      assertExternalState(state, fileURLToPath(new URL('../', import.meta.url)));
+      const st = await lstat(state);
+      if (!st.isDirectory() || st.isSymbolicLink() || st.mode & 0o077)
+        throw Error('Private designated-maintainer state required');
+      if (publishers.has(home.homeId)) throw Error('One action maintainer per home required');
+      publishers.set(home.homeId, createChatActionPublisher({ directory: state, verifySources }));
+    }
+    const actions = publishers.size
+      ? await createChatActions({
+          directory: join(config.directory, 'actions'),
+          authorize,
+          verifySources,
+          ioFor: (/** @type {any} */ current) => chatFileClient(current.token, current.scope),
+          secretsFor: (/** @type {any} */ scope) => models.get(scope.homeId)?.secrets ?? [],
+          publish: (
+            /** @type {any} */ record,
+            /** @type {any} */ current,
+            /** @type {any} */ context
+          ) => publishers.get(current.scope.homeId).publish(record, current, context),
+          resolvePublication: (
+            /** @type {any} */ record,
+            /** @type {any} */ current,
+            /** @type {any} */ context
+          ) => publishers.get(current.scope.homeId).resolvePublication(record, current, context)
+        })
+      : null;
     worker = await createChatWorker({
       directory: join(config.directory, 'runs'),
       authorize,
       modelFor: (/** @type {string} */ homeId) => models.get(homeId),
       readSource: chatSourceReader(),
       archive,
-      uploads
+      uploads,
+      actionsFor: (/** @type {string} */ homeId) => (publishers.has(homeId) ? actions : null)
     });
   } catch (e) {
     server.close();

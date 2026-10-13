@@ -1,4 +1,6 @@
 import { searchHomeKnowledge } from '../src/lib/home/knowledge-search.js';
+import { chatActionDefinitions, chatActionDraft } from './chat-action-tools.mjs';
+/** @type {any[]} */
 const definitions = [
   ['read_home', 'Read current home overview', {}],
   [
@@ -42,11 +44,12 @@ const definitions = [
   }
 }));
 /** Fresh current caller authority is injected; arbitrary paths and commands are absent. @param {any} options */
-export function createChatHomeTools({ authorize, readSource, uploadedSource }) {
+export function createChatHomeTools({ authorize, readSource, uploadedSource, prepareAction }) {
+  const available = prepareAction ? [...definitions, ...chatActionDefinitions] : definitions;
   return {
-    definitions /** @param {string} name @param {any} args */,
+    definitions: available /** @param {string} name @param {any} args */,
     async execute(/** @type {string} */ name, /** @type {any} */ args) {
-      const definition = definitions.find((x) => x.name === name);
+      const definition = available.find((x) => x.name === name);
       if (!definition) throw Error('Unsupported home tool');
       const keys = Object.keys(definition.parameters.properties);
       if (
@@ -79,6 +82,11 @@ export function createChatHomeTools({ authorize, readSource, uploadedSource }) {
         home = access.home;
       if (!home || !['viewer', 'contributor', 'maintainer'].includes(access.role))
         throw Error('Current home access required');
+      if (name.startsWith('prepare_')) {
+        if (!prepareAction || !['contributor', 'maintainer'].includes(access.role))
+          throw Error('Current contribution role required');
+        return prepareAction(chatActionDraft(name, args));
+      }
       if (name === 'read_home')
         return {
           id: home.id,

@@ -18,11 +18,35 @@ function toolReceipt(name, value, secrets) {
       'read_source',
       'read_source_pages',
       'read_model_region',
-      'prepare_home_update'
+      'prepare_home_update',
+      'prepare_note',
+      'prepare_fact',
+      'prepare_contact',
+      'prepare_maintenance',
+      'prepare_schedule',
+      'prepare_task_completion'
     ].includes(name)
   )
     throw Error('Unsupported tool receipt');
   const result = /** @type {any} */ ({ tool: name });
+  if (name.startsWith('prepare_')) {
+    if (typeof value.actionId === 'string' && /^[a-f0-9-]{36}$/.test(value.actionId))
+      result.actionId = value.actionId;
+    if (typeof value.digest === 'string' && /^[a-f0-9]{64}$/.test(value.digest))
+      result.digest = value.digest;
+    if (
+      [
+        'proposed',
+        'pending-readback',
+        'submitted',
+        'publication-pending',
+        'held-for-review',
+        'accepted'
+      ].includes(value.status)
+    )
+      result.status = value.status;
+    return redactChatText(JSON.stringify(result), secrets);
+  }
   if (['read_source', 'read_source_pages'].includes(name)) {
     if (typeof value.id === 'string' && /^[a-z0-9][a-z0-9._-]{0,199}$/i.test(value.id))
       result.sourceId = value.id;
@@ -198,7 +222,17 @@ export async function runChatTurn({
             ++toolCount > 16 ||
             typeof item.name !== 'string' ||
             typeof item.arguments !== 'string' ||
-            Buffer.byteLength(item.arguments) > 4000 ||
+            Buffer.byteLength(item.arguments) >
+              ([
+                'prepare_note',
+                'prepare_fact',
+                'prepare_contact',
+                'prepare_maintenance',
+                'prepare_schedule',
+                'prepare_task_completion'
+              ].includes(item.name)
+                ? 16000
+                : 4000) ||
             typeof item.callId !== 'string' ||
             item.callId.length > 200
           )
