@@ -1,5 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
+  import { mergeRecordActions } from '$lib/home/chat-record-state.js';
+  import { recordCard } from '$lib/home/chat-record-card.js';
   import { validateChatTurn } from '$lib/home/chat-contract.js';
   import { chatConversationReader } from '$lib/home/chat-poll-controller.js';
   import { uploadChatFile } from '$lib/home/chat-upload-client.js';
@@ -18,6 +20,10 @@
     events: any[] = $state([]),
     pending: any = $state(null),
     callerId = '';
+  let recordActions: any[] = $state([]);
+  let canSaveRecords = $state(false),
+    savingId = $state('');
+  let saveErrors: Record<string, string> = $state({});
   let viewport: HTMLElement | undefined = $state();
   let canUpload = $state(false),
     uploading = $state(false),
@@ -43,13 +49,20 @@
       /* Server conversation remains authoritative. */
     }
   }
-  async function response(url: string, options: RequestInit = {}) {
+  async function response(url: string, options: RequestInit = {}, writeOnly = false) {
     const r = await fetch(url, { cache: 'no-store', ...options });
     const value = await r.json();
     if (!r.ok) {
-      if (r.status === 401 || r.status === 403) {
+      if (r.status === 403 && writeOnly) {
+        canSaveRecords = false;
+        recordActions = [];
+        void start();
+      } else if (r.status === 401 || r.status === 403) {
         turns = [];
         events = [];
+        recordActions = [];
+        canSaveRecords = false;
+        reader.select('');
         available = false;
       }
       throw new Error(value.message ?? 'Chat is temporarily unavailable.');
@@ -66,6 +79,7 @@
       const value = await reader.poll(cursor);
       if (!value || disposed) return;
       turns = value.turns;
+      recordActions = mergeRecordActions(recordActions, value.actions ?? [], conversationId);
       for (const item of value.events) {
         if (!events.some((e) => e.cursor === item.cursor)) events.push(item);
       }
@@ -96,6 +110,7 @@
       key = 'home-chat:' + home.id + ':' + callerId;
       available = value.available === true;
       canUpload = value.uploads === true;
+      canSaveRecords = value.recordActions === true;
       try {
         conversationId = localStorage.getItem(key) ?? '';
       } catch {}
@@ -110,6 +125,58 @@
     } catch (e) {
       ready = true;
       errorMessage = e instanceof Error ? e.message : 'Chat is temporarily unavailable.';
+    }
+  }
+  async function saveRecord(action: any) {
+    if (
+      !canSaveRecords ||
+      !available ||
+      running ||
+      savingId ||
+      action.conversationId !== conversationId
+    )
+      return;
+    const selected = conversationId,
+      generation = reader.generation;
+    savingId = action.actionId;
+    saveErrors = { ...saveErrors, [action.actionId]: '' };
+    try {
+      const result = await response(
+        '/api/home/chat/actions',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conversationId: selected,
+            actionId: action.actionId,
+            digest: action.digest
+          })
+        },
+        true
+      );
+      if (
+        !disposed &&
+        generation === reader.generation &&
+        selected === conversationId &&
+        result.actionId === action.actionId &&
+        result.digest === action.digest &&
+        result.conversationId === selected
+      )
+        recordActions = mergeRecordActions(
+          recordActions,
+          recordActions.map((a) => (a.actionId === action.actionId ? result : a)),
+          selected
+        );
+    } catch {
+      if (!disposed && generation === reader.generation && selected === conversationId && available)
+        saveErrors = {
+          ...saveErrors,
+          [action.actionId]:
+            'Saving could not be confirmed. Check this same record; its saved progress is retained.'
+        };
+    } finally {
+      if (savingId === action.actionId) savingId = '';
+      if (!disposed && generation === reader.generation) void refresh();
     }
   }
   async function send() {
@@ -229,7 +296,9 @@
     }
   }
   function newConversation() {
-    if (running) return;
+    if (savingId || running) return;
+    recordActions = [];
+    saveErrors = {};
     conversationId = crypto.randomUUID();
     reader.select(conversationId);
     checking = false;
@@ -259,7 +328,9 @@
       <h2>Ask your home</h2>
       <p>Questions, records and the details that keep this home remembered.</p>
     </div>
-    <button onclick={newConversation} disabled={!ready || running}>New conversation</button>
+    <button onclick={newConversation} disabled={!ready || running || !!savingId}
+      >New conversation</button
+    >
   </header>
   {#if !ready}<p role="status">Opening chat…</p>{:else if !available && !errorMessage}<p
       role="status"
@@ -309,6 +380,51 @@
             This reply couldn’t finish. You can try a new message.
           </p>{/if}
       </article>
+      {#each recordActions.filter((a) => a.turnId === turn.input.turnId) as action (action.actionId)}
+        {@const card = recordCard(action.draft, {
+          ...home,
+          sources: [...(home.sources ?? []), ...addedSources]
+        })}
+        <article class="record-card" aria-label="Proposed home record">
+          <h3>{card.title}</h3>
+          <dl>
+            {#each card.rows as row}<div>
+                <dt>{row[0]}</dt>
+                <dd>{row[1]}</dd>
+              </div>{/each}
+          </dl>
+          {#if action.status === 'accepted'}<p role="status">Saved to this home.</p>
+          {:else if action.status === 'submitted'}<p role="status">
+              Submitted for the home’s next update.
+            </p>
+          {:else if action.status === 'held-for-review'}<p role="status">
+              This record needs review before it can update the home.
+            </p>
+          {:else if action.status === 'publication-pending' || action.status === 'pending-readback'}<p
+              role="status"
+            >
+              Saving is awaiting confirmation.
+            </p>{/if}
+          {#if canSaveRecords && !['accepted', 'submitted', 'held-for-review'].includes(action.status)}
+            <button
+              type="button"
+              onclick={() => saveRecord(action)}
+              disabled={!available || running || !!savingId}
+            >
+              {savingId === action.actionId
+                ? 'Saving…'
+                : action.status === 'proposed' && !saveErrors[action.actionId]
+                  ? 'Save record'
+                  : 'Check saved progress'}
+            </button>
+          {/if}
+          {#if saveErrors[action.actionId] && !['accepted', 'submitted', 'held-for-review'].includes(action.status)}<p
+              role="alert"
+            >
+              {saveErrors[action.actionId]}
+            </p>{/if}
+        </article>
+      {/each}
     {/each}
   </div>
   <form
@@ -381,6 +497,34 @@
 </section>
 
 <style>
+  .record-card {
+    border: 1px solid #bdd3c6;
+    border-radius: 12px;
+    padding: 16px;
+    margin: 12px 0;
+    overflow-wrap: anywhere;
+  }
+  .record-card h3 {
+    margin: 0 0 12px;
+    font-size: 18px;
+  }
+  .record-card dl {
+    margin: 0 0 16px;
+  }
+  .record-card dl div {
+    margin: 8px 0;
+  }
+  .record-card dt {
+    font-size: 12px;
+    color: #63756d;
+  }
+  .record-card dd {
+    margin: 3px 0 0;
+    white-space: pre-wrap;
+  }
+  .record-card p {
+    font-size: 14px;
+  }
   .house-chat {
     max-width: 1000px;
     margin: auto;
@@ -530,6 +674,34 @@
     margin-bottom: 0;
   }
   @media (max-width: 600px) {
+    .record-card {
+      border: 1px solid #bdd3c6;
+      border-radius: 12px;
+      padding: 16px;
+      margin: 12px 0;
+      overflow-wrap: anywhere;
+    }
+    .record-card h3 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+    .record-card dl {
+      margin: 0 0 16px;
+    }
+    .record-card dl div {
+      margin: 8px 0;
+    }
+    .record-card dt {
+      font-size: 12px;
+      color: #63756d;
+    }
+    .record-card dd {
+      margin: 3px 0 0;
+      white-space: pre-wrap;
+    }
+    .record-card p {
+      font-size: 14px;
+    }
     .house-chat {
       padding: 16px;
     }

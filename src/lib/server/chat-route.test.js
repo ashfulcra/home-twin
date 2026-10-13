@@ -4,6 +4,7 @@ vi.mock('$lib/server/home-access.js', () => ({ resolveHome: mocks.resolve }));
 vi.mock('$lib/server/chat-service.js', () => ({ callChatService: mocks.call }));
 import { GET, POST } from '../../routes/api/home/chat/+server.js';
 import { GET as events } from '../../routes/api/home/chat/events/+server.js';
+import { POST as saveRecord } from '../../routes/api/home/chat/actions/+server.js';
 import { POST as cancel } from '../../routes/api/home/chat/cancel/+server.js';
 const conversationId = '11111111-1111-4111-8111-111111111111',
   input = {
@@ -78,4 +79,29 @@ test('worker outage has a bounded generic message without credentials', async ()
   } catch (e) {
     expect(JSON.stringify(e)).not.toContain('current-caller');
   }
+});
+
+const approval = { conversationId, actionId: input.turnId, digest: 'a'.repeat(64) };
+test('record approval relays only an exact saved decision using current writer access', async () => {
+  mocks.resolve.mockResolvedValue({ home: { id: 'example' }, role: 'maintainer' });
+  const r = await saveRecord(event(approval));
+  expect(r.headers.get('cache-control')).toBe('private, no-store');
+  expect(mocks.call).toHaveBeenCalledExactlyOnceWith('current-caller', 'example', 'apply-record', {
+    input: approval
+  });
+});
+test('record approval refuses viewers, anonymous callers, injected scope and malformed decisions before effects', async () => {
+  await expect(saveRecord(event(approval))).rejects.toMatchObject({ status: 403 });
+  await expect(saveRecord(event(approval, false))).rejects.toMatchObject({ status: 401 });
+  mocks.resolve.mockResolvedValue({ home: { id: 'example' }, role: 'contributor' });
+  for (const body of [
+    { ...approval, root: '/other' },
+    { ...approval, token: 'other' },
+    { ...approval, actionId: '../x' },
+    { ...approval, digest: 'not-exact' },
+    null,
+    { ...approval, digest: 'a'.repeat(17000) }
+  ])
+    await expect(saveRecord(event(body))).rejects.toMatchObject({ status: 400 });
+  expect(mocks.call).not.toHaveBeenCalled();
 });
