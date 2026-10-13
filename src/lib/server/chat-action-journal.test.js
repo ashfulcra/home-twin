@@ -298,3 +298,47 @@ test('reading thirty-one ordinary conversations consumes no proposal capacity or
   const a = await f.actions.prepare(f.draft, f.context, f.request);
   expect(a.status).toBe('proposed');
 });
+
+test('durable exact approval survives restart without cloud effects and cannot approve a changed digest', async () => {
+  const f = await fixture();
+  const a = await f.actions.prepare(f.draft, f.context, f.request);
+  const input = { conversationId, actionId: a.actionId, digest: a.digest };
+  await expect(f.actions.admit({ ...input, digest: 'b'.repeat(64) }, f.request)).rejects.toThrow();
+  expect(f.writes).toBe(0);
+  const queued = await f.actions.admit(input, f.request);
+  expect(queued.status).toBe('queued');
+  expect(queued.approvalRequested).toBe(true);
+  const restarted = await createChatActions(f.options);
+  const [saved] = await restarted.list(conversationId, f.request);
+  expect(saved.status).toBe('queued');
+  expect(saved.digest).toBe(a.digest);
+  expect(f.writes).toBe(0);
+  f.setRole('viewer');
+  await expect(restarted.admit(input, f.request)).rejects.toThrow();
+  expect(f.writes).toBe(0);
+});
+
+test('a confirmed contribution without publication result remains recoverable after a temporary source failure', async () => {
+  const f = await fixture();
+  let unavailable = true;
+  f.options.verifySources = async () => {
+    if (f.writes > 0 && unavailable) throw Error('Synthetic source temporarily unavailable');
+    return [{ id: 'manual', sha256: 'a'.repeat(64) }];
+  };
+  let actions = await createChatActions(f.options);
+  const a = await actions.prepare(f.draft, f.context, f.request),
+    input = { conversationId, actionId: a.actionId, digest: a.digest };
+  await actions.admit(input, f.request);
+  await expect(actions.apply(input, f.request)).rejects.toThrow(/unavailable/);
+  await actions.markUnconfirmed(input, f.request);
+  expect(f.writes).toBe(1);
+  expect(f.published).toBe(0);
+  expect((await actions.list(conversationId, f.request))[0].status).not.toBe('submitted');
+  unavailable = false;
+  actions = await createChatActions(f.options);
+  const recover = await actions.admit(input, f.request);
+  expect(recover.status).not.toBe('submitted');
+  expect((await actions.apply(input, f.request)).status).toBe('accepted');
+  expect(f.writes).toBe(1);
+  expect(f.published).toBe(1);
+});

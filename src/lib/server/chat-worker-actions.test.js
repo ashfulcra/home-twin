@@ -104,8 +104,13 @@ test('the actual worker prepares a review with no writes and saves only an exact
   ).rejects.toThrow();
   expect(writes).toBe(0);
   expect((await worker.dispatch({ ...request, action: 'apply-record', input })).status).toBe(
-    'accepted'
+    'queued'
   );
+  await worker.idle();
+  expect(
+    (await worker.dispatch({ ...request, action: 'events', conversationId, cursor: 0 })).actions[0]
+      .status
+  ).toBe('accepted');
   expect(writes).toBe(1);
   expect((await worker.dispatch({ ...request, action: 'apply-record', input })).status).toBe(
     'accepted'

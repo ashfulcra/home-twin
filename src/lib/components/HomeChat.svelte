@@ -33,6 +33,12 @@
   let addedSources: any[] = $state([]);
   let timer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
+  const resumedRecords = new Set<string>();
+  let recordBusy = $derived(
+    recordActions.some(
+      (a) => a.operation?.active && !['accepted', 'submitted', 'held-for-review'].includes(a.status)
+    )
+  );
   let key = '';
   const terminal = new Set(['completed', 'failed', 'cancelled', 'interrupted', 'uncertain']);
   let running = $derived(sending || turns.some((t) => !terminal.has(t.status)));
@@ -90,6 +96,19 @@
         sourceId = '';
       }
       errorMessage = '';
+      const unfinished = recordActions.find(
+        (a) =>
+          a.approvalRequested === true &&
+          !a.operation?.active &&
+          ['queued', 'pending-readback', 'contribution-confirmed', 'publication-pending'].includes(
+            a.status
+          ) &&
+          !resumedRecords.has(a.actionId)
+      );
+      if (unfinished && canSaveRecords && !running && !savingId) {
+        resumedRecords.add(unfinished.actionId);
+        void saveRecord(unfinished);
+      }
       await tick();
       if (viewport && running) viewport.scrollTop = viewport.scrollHeight;
     } catch (e) {
@@ -138,6 +157,7 @@
       return;
     const selected = conversationId,
       generation = reader.generation;
+    resumedRecords.add(action.actionId);
     savingId = action.actionId;
     saveErrors = { ...saveErrors, [action.actionId]: '' };
     try {
@@ -298,6 +318,7 @@
   function newConversation() {
     if (savingId || running) return;
     recordActions = [];
+    resumedRecords.clear();
     saveErrors = {};
     conversationId = crypto.randomUUID();
     reader.select(conversationId);
@@ -400,7 +421,13 @@
           {:else if action.status === 'held-for-review'}<p role="status">
               This record needs review before it can update the home.
             </p>
-          {:else if action.status === 'publication-pending' || action.status === 'pending-readback'}<p
+          {:else if action.status === 'queued' || action.operation?.active}<p role="status">
+              Saving record… You can keep reading while its sources are checked.
+            </p>
+          {:else if action.status === 'save-unconfirmed'}<p role="status">
+              This update could not finish. Review the record before checking again.
+            </p>
+          {:else if action.status === 'publication-pending' || action.status === 'pending-readback' || action.status === 'contribution-confirmed'}<p
               role="status"
             >
               Saving is awaiting confirmation.
@@ -409,9 +436,9 @@
             <button
               type="button"
               onclick={() => saveRecord(action)}
-              disabled={!available || running || !!savingId}
+              disabled={!available || running || !!savingId || recordBusy}
             >
-              {savingId === action.actionId
+              {savingId === action.actionId || action.operation?.active
                 ? 'Saving…'
                 : action.status === 'proposed' && !saveErrors[action.actionId]
                   ? 'Save record'

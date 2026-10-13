@@ -3,7 +3,10 @@
 export function mergeRecordActions(current, incoming, conversationId) {
   const progress = [
     'proposed',
+    'queued',
+    'save-unconfirmed',
     'pending-readback',
+    'contribution-confirmed',
     'submitted',
     'publication-pending',
     'held-for-review',
@@ -17,7 +20,7 @@ export function mergeRecordActions(current, incoming, conversationId) {
           p.actionId === a.actionId && p.digest === a.digest && p.conversationId === conversationId
       );
       return previous && progress.indexOf(previous.status) > progress.indexOf(a.status)
-        ? previous
+        ? { ...previous, ...(a.operation ? { operation: a.operation } : {}) }
         : a;
     });
 }

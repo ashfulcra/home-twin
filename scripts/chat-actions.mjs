@@ -120,11 +120,27 @@ export async function createChatActions({
       !uuid.test(j.proposal.actionId) ||
       !uuid.test(j.proposal.conversationId) ||
       !uuid.test(j.proposal.turnId) ||
-      !['proposed', 'pending', 'confirmed'].includes(j.state)
+      !['proposed', 'pending', 'confirmed'].includes(j.state) ||
+      (j.approvalDigest !== undefined && j.approvalDigest !== j.digest) ||
+      (j.approvalState !== undefined && !['queued', 'unconfirmed'].includes(j.approvalState))
     )
       throw Error('Action integrity or scope differs');
     validateHomeAction(j.proposal.draft);
     return j;
+  }
+  /** @param {any} input */
+  function validateApproval(input) {
+    if (
+      !input ||
+      typeof input !== 'object' ||
+      Array.isArray(input) ||
+      Object.keys(input).length !== 3 ||
+      Object.keys(input).some((k) => !['actionId', 'conversationId', 'digest'].includes(k)) ||
+      !uuid.test(input.actionId) ||
+      !uuid.test(input.conversationId) ||
+      !/^[a-f0-9]{64}$/.test(input.digest)
+    )
+      throw Error('Exact reviewed action required');
   }
   function view(/** @type {any} */ j) {
     return {
@@ -139,9 +155,14 @@ export async function createChatActions({
         j.result?.status ??
         (j.state === 'pending'
           ? 'pending-readback'
-          : j.state === 'confirmed'
-            ? 'submitted'
-            : 'proposed'),
+          : j.approvalState === 'unconfirmed'
+            ? 'save-unconfirmed'
+            : j.state === 'confirmed'
+              ? 'contribution-confirmed'
+              : j.approvalDigest === j.digest
+                ? 'queued'
+                : 'proposed'),
+      ...(j.approvalDigest === j.digest ? { approvalRequested: true } : {}),
       ...(j.result?.revision ? { revision: j.result.revision } : {})
     };
   }
@@ -219,7 +240,7 @@ export async function createChatActions({
           '-' +
           identity.slice(20, 32),
         dir = await folder(a.scope, context.conversationId);
-      if(!dir)throw Error('Private proposal directory required');
+      if (!dir) throw Error('Private proposal directory required');
       const path = join(dir, actionId + '.json');
       return withChatLock(path, async () => {
         try {
@@ -269,15 +290,40 @@ export async function createChatActions({
         throw Error('Action list exceeds bound; inspect the previous conversation');
       return out;
     },
+    /** Persist only the exact user decision; source verification and effects remain in apply. */
+    async admit(/** @type {any} */ input, /** @type {any} */ request) {
+      validateApproval(input);
+      const a = await access(request),
+        dir = await folder(a.scope, input.conversationId, false);
+      if (!dir) throw Error('Exact reviewed action unavailable');
+      const path = join(dir, input.actionId + '.json');
+      return withChatLock(path, async () => {
+        const j = await load(path, a.scope);
+        if (j.digest !== input.digest || j.proposal.conversationId !== input.conversationId)
+          throw Error('Reviewed action digest or conversation differs');
+        j.approvalDigest = input.digest;
+        j.approvalState = 'queued';
+        await save(path, j);
+        return view(j);
+      });
+    },
+    async markUnconfirmed(/** @type {any} */ input, /** @type {any} */ request) {
+      validateApproval(input);
+      const a = await access(request),
+        dir = await folder(a.scope, input.conversationId, false);
+      if (!dir) throw Error('Exact reviewed action unavailable');
+      const path = join(dir, input.actionId + '.json');
+      return withChatLock(path, async () => {
+        const j = await load(path, a.scope);
+        if (j.digest !== input.digest || j.approvalDigest !== input.digest)
+          throw Error('Exact approved action required');
+        j.approvalState = 'unconfirmed';
+        await save(path, j);
+        return view(j);
+      });
+    },
     async apply(/** @type {any} */ input, /** @type {any} */ request) {
-      if (
-        !input ||
-        Object.keys(input).length !== 3 ||
-        !uuid.test(input.actionId) ||
-        !uuid.test(input.conversationId) ||
-        !/^[a-f0-9]{64}$/.test(input.digest)
-      )
-        throw Error('Exact reviewed action required');
+      validateApproval(input);
       let a = await access(request);
       const dir = await folder(a.scope, input.conversationId, false);
       if (!dir) throw Error('Exact reviewed action unavailable');

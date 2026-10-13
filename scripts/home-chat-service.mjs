@@ -36,6 +36,7 @@ export async function createChatWorker({
     throw Error('Private chat runtime directory required');
   /** @type {Map<string,Promise<any>>} */ const journals = new Map();
   /** @type {Map<string,any>} */ const active = new Map();
+  /** @type {Map<string,any>} */ const recordJobs = new Map();
   async function bind(/** @type {any} */ input) {
     if (
       typeof input.token !== 'string' ||
@@ -76,7 +77,7 @@ export async function createChatWorker({
     scope.homeId + '/' + scope.principalId + '/' + id;
   return {
     async idle() {
-      await Promise.all([...active.values()].map((x) => x.promise));
+      await Promise.all([...active.values(), ...recordJobs.values()].map((x) => x.promise));
     },
     /** @param {any} request */ async dispatch(request) {
       if (
@@ -122,7 +123,47 @@ export async function createChatWorker({
         await journal.readConversation(request.input.conversationId);
         if (active.has(jobKey(scope, request.input.conversationId)))
           throw Error('Wait for the reply before saving this record');
-        return selectedActions.apply(request.input, { token: request.token, homeId: scope.homeId });
+        const input = request.input;
+        const key = jobKey(scope, input.conversationId) + '/' + input.actionId;
+        const existing = recordJobs.get(key);
+        if (existing) {
+          if (JSON.stringify(existing.input) !== JSON.stringify(input))
+            throw Error('Changed approval intent');
+          await existing.admission;
+          return { ...existing.approval, operation: { active: true } };
+        }
+        if (recordJobs.size >= 8) throw Error('Record worker busy; check the same decision later');
+        const current = { token: request.token, homeId: scope.homeId };
+        /** @type {any} */ const job = {
+          input: structuredClone(input),
+          admission: null,
+          approval: null,
+          promise: null
+        };
+        recordJobs.set(key, job);
+        job.admission = selectedActions.admit(input, current);
+        try {
+          job.approval = await job.admission;
+        } catch (e) {
+          recordJobs.delete(key);
+          throw e;
+        }
+        if (['accepted', 'submitted', 'held-for-review'].includes(job.approval.status)) {
+          recordJobs.delete(key);
+          return job.approval;
+        }
+        job.promise = (async () => {
+          try {
+            return await selectedActions.apply(input, current);
+          } catch {
+            try {
+              await selectedActions.markUnconfirmed(input, current);
+            } catch {}
+          } finally {
+            recordJobs.delete(key);
+          }
+        })();
+        return { ...job.approval, operation: { active: true } };
       }
       if (request.action === 'turn') {
         if (!selectedModel) throw Error('Model is not configured');
@@ -250,10 +291,19 @@ export async function createChatWorker({
           ...(selectedActions
             ? {
                 actions: ['maintainer', 'contributor'].includes(scope.role)
-                  ? await selectedActions.list(request.conversationId, {
-                      token: request.token,
-                      homeId: scope.homeId
-                    })
+                  ? (
+                      await selectedActions.list(request.conversationId, {
+                        token: request.token,
+                        homeId: scope.homeId
+                      })
+                    ).map((/** @type {any} */ action) => ({
+                      ...action,
+                      operation: {
+                        active: recordJobs.has(
+                          jobKey(scope, request.conversationId) + '/' + action.actionId
+                        )
+                      }
+                    }))
                   : []
               }
             : {}),
