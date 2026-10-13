@@ -96,6 +96,8 @@ Find records searches the current home’s equipment facts, providers and their 
 
 ### Changes to original evidence
 
+Opening an original checks its exact bytes against a recorded SHA-256. Changed or invalid recorded checksums return a conflict; they do not update accepted facts or the historical checksum. Legacy references without a checksum remain unverified, and uploaded originals retain their checksum and size checks. Reads always use the current caller’s permissions.
+
 Add `--check-sources` to the maintainer `cycle` command to compare referenced Fulcra originals against their recorded checksums. Changed originals create private source-review work; absent checksums and inaccessible originals remain explicit. This is read-only and does not replace accepted facts. It checks at most 100 originals, streams at most 10 MiB per file, and uses the current caller’s permissions. New homes stay within their source folder; explicit legacy homes can reference their owner’s `home/` vault documents. Repeated unchanged audited cycles are silent. Use the flag consistently for a given monitoring flow. `publish` remains separate and does not accept this flag.
 
 

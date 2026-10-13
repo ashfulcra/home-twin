@@ -4,7 +4,7 @@ import {reconcileContributions} from '$lib/home/contributions.js';
 import {sourceLocation} from '$lib/server/source-location.js';
 import {error} from '@sveltejs/kit';
 import {createHash} from 'node:crypto';
-import {readFulcraFile,readFulcraBytes} from '$lib/server/fulcra-files.js';
+import {readFulcraBytes} from '$lib/server/fulcra-files.js';
 import {MAX_SOURCE_BYTES} from '$lib/home/attachments.js';
 export async function GET({cookies,url}){
  const token=cookies.get('fulcra_access_token');if(!token)throw error(401,'Not authenticated');
@@ -19,6 +19,9 @@ export async function GET({cookies,url}){
   if(bytes.byteLength!==source.attachment.sizeBytes||createHash('sha256').update(bytes).digest('hex')!==source.attachment.sha256)throw error(409,'Original source checksum no longer matches');
   return new Response(bytes,{headers:{'Content-Type':source.attachment.mimeType,'Content-Disposition':`attachment; filename="source-${source.contributionId}.${source.attachment.extension}"`,'X-Content-Type-Options':'nosniff','Cache-Control':'private, no-store'}});
  }
- const file=await readFulcraFile(access.endpoint,token,location.path,location.userId);if(!file)throw error(404,'Source unavailable');
- return new Response(file.text,{headers:{'Content-Type':'text/plain; charset=utf-8','X-Content-Type-Options':'nosniff','Cache-Control':'private, no-store'}});
+ if(source.sha256!=null&&(typeof source.sha256!=='string'||!/^[a-f0-9]{64}$/i.test(source.sha256)))throw error(409,'Recorded source checksum needs review');
+ // Preserve the existing legacy size policy; uploaded attachments remain bounded above.
+ const bytes=await readFulcraBytes(access.endpoint,token,location.path,Infinity,location.userId);if(!bytes)throw error(404,'Source unavailable');
+ if(source.sha256!=null&&createHash('sha256').update(bytes).digest('hex')!==source.sha256.toLowerCase())throw error(409,'Original source changed; its recorded checksum no longer matches');
+ return new Response(bytes,{headers:{'Content-Type':'text/plain; charset=utf-8','X-Content-Type-Options':'nosniff','Cache-Control':'private, no-store'}});
 }

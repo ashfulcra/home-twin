@@ -43,7 +43,7 @@ export async function readBoundedBytes(response,max){
 /** @param {string} endpoint @param {string} token @param {string} path @param {number} max @param {string} [userId] */
 export async function readFulcraBytes(endpoint,token,path,max,userId){
  const split=path.lastIndexOf('/');const api=new FulcraAPI(endpoint,token);
- const listing=await api.get(`input/v1/file_upload?path=${encodeURIComponent(path.slice(0,split))}${userId?`&fulcra_userid=${encodeURIComponent(userId)}`:''}`);
+ const listing=await api.get(`input/v1/file_upload?path=${encodeURIComponent(path.slice(0,split)||'/')}${userId?`&fulcra_userid=${encodeURIComponent(userId)}`:''}`);
  const file=listing.files?.find((/** @type {any} */ f)=>f.name===path.slice(split+1));if(!file)return null;
  const r=await fetch(`${endpoint}input/v1/file_upload/${file.id}/download${userId?`?fulcra_userid=${encodeURIComponent(userId)}`:''}`,{headers:{Authorization:`Bearer ${token}`}});if(!r.ok)throw new Error(`Fulcra source status ${r.status}`);
  return readBoundedBytes(r,max);
