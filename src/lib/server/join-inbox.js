@@ -43,18 +43,24 @@ export async function loadJoinInbox(access,transport){
   }
   /** @type {any} */let outgoing;
   for(const row of requests){
-   const values=decisions.get(row.code)??[],outcomes=new Set(values.map(v=>v.decision+':'+v.role));
+   const allValues=decisions.get(row.code)??[],allOutcomes=new Set(allValues.map(v=>v.decision+':'+v.role));
+   const latestRevision=Math.max(...allValues.map(v=>v.homeRevision));
+   let values=allValues;
+   if(allOutcomes.size>1){const latest=allValues.filter(v=>v.homeRevision===latestRevision),roles=new Set(latest.map(v=>v.role));const currentRole=access.home.members?.find((/** @type {any} */m)=>m.userId===row.userId)?.role;
+    if(latest.length&&latest.every(v=>v.decision==='approve')&&roles.size===1&&currentRole===latest[0].role&&latestRevision<access.home.revision){outgoing??=await transport.outgoing();if(latest.some(v=>exactAdmissionShare(outgoing,{datashare_name:'home-twin:'+target.homeId+':'+v.id,fulcra_user_name:target.ownerUserId,time_start:null,time_end:null,fulcra_data_types:['file:/shared/home-twin/'+target.homeId+'/home.json'],share_all_data:false,permissions:[{allowed_fulcra_userid:row.userId}],group_permissions:[]})))values=latest;}
+   }
+   const outcomes=new Set(values.map(v=>v.decision+':'+v.role));
    if(reviewIncomplete)row.state='review-unverified';
    else if(outcomes.size>1)row.state='conflicting-decisions';
    else if(values.length){
     let value=values.find(v=>v.homeRevision===access.home.revision&&v.homeFileVersion===access.file?.id&&v.homeDigest===digest(access.file?.text??''))??values[0];
     if(value.decision==='reject')row.state='rejected';
     else{
-     row.reviewCode=value.id+'-'+digest(JSON.stringify(value));
+     row.reviewCode=value.id+'-'+digest(JSON.stringify(value));row.decisionRole=value.role;
      if(access.home.members?.some((/** @type {any} */m)=>m.userId===row.userId&&m.role===value.role)){
       outgoing??=await transport.outgoing();
       const confirmed=values.find(v=>exactAdmissionShare(outgoing,{datashare_name:'home-twin:'+target.homeId+':'+v.id,fulcra_user_name:target.ownerUserId,time_start:null,time_end:null,fulcra_data_types:['file:/shared/home-twin/'+target.homeId+'/home.json'],share_all_data:false,permissions:[{allowed_fulcra_userid:row.userId}],group_permissions:[]}));
-      if(confirmed){value=confirmed;row.reviewCode=value.id+'-'+digest(JSON.stringify(value));row.state='role-recorded';}
+      if(confirmed){value=confirmed;row.reviewCode=value.id+'-'+digest(JSON.stringify(value));row.state='role-recorded';row.approvedRole=value.role;}
       else row.state='grant-unconfirmed';
      }else row.state=value.homeRevision!==access.home.revision||value.homeFileVersion!==access.file?.id||value.homeDigest!==digest(access.file?.text??'')?'approval-needs-review':'approved-awaiting-application';
     }

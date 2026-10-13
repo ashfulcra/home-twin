@@ -1,0 +1,2 @@
+import {test,expect} from 'vitest';import {joinApprovalAllowed} from './join-approval-policy.js';
+test('normal pending and recoverable approvals allow one click; approved, declined and unverified conflicts cannot grant',()=>{for(const state of ['unreviewed','approval-needs-review','approved-awaiting-application','grant-unconfirmed'])expect(joinApprovalAllowed({state})).toBe(true);for(const state of ['role-recorded','rejected','conflicting-decisions','review-unverified','unknown'])expect(joinApprovalAllowed({state})).toBe(false);});
