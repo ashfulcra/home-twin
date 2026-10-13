@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { validateChatTurn } from '$lib/home/chat-contract.js';
+  import { chatConversationReader } from '$lib/home/chat-poll-controller.js';
   let { home } = $props<{ home: any }>();
   let ready = $state(false),
     available = $state(false),
@@ -47,17 +48,15 @@
     }
     return value;
   }
+  const reader = chatConversationReader(response);
   async function refresh() {
     if (disposed || checking || !conversationId) return;
     checking = true;
+    const generation = reader.generation;
     try {
       const cursor = events.at(-1)?.cursor ?? 0;
-      const value = await response(
-        '/api/home/chat/events?conversationId=' +
-          encodeURIComponent(conversationId) +
-          '&cursor=' +
-          cursor
-      );
+      const value = await reader.poll(cursor);
+      if (!value || disposed) return;
       turns = value.turns;
       for (const item of value.events) {
         if (!events.some((e) => e.cursor === item.cursor)) events.push(item);
@@ -72,8 +71,10 @@
       await tick();
       if (viewport && running) viewport.scrollTop = viewport.scrollHeight;
     } catch (e) {
-      errorMessage = e instanceof Error ? e.message : 'Couldn’t reconnect to chat.';
+      if (generation === reader.generation && !disposed)
+        errorMessage = e instanceof Error ? e.message : 'Couldn’t reconnect to chat.';
     } finally {
+      if (generation !== reader.generation) return;
       checking = false;
       if (!disposed) timer = setTimeout(refresh, running ? 800 : 4000);
     }
@@ -93,6 +94,8 @@
         conversationId = crypto.randomUUID();
         remember();
       }
+      reader.select(conversationId);
+      checking = false;
       ready = true;
       void refresh();
     } catch (e) {
@@ -145,6 +148,8 @@
   function newConversation() {
     if (running) return;
     conversationId = crypto.randomUUID();
+    reader.select(conversationId);
+    checking = false;
     turns = [];
     events = [];
     pending = null;

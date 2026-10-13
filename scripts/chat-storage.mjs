@@ -1,3 +1,4 @@
+import { withChatLock } from './chat-lock.mjs';
 import { mkdir, lstat, readFile, open, rename, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -103,11 +104,8 @@ export async function chatTranscriptArchive(directory, clientFor = accessFulcraC
     const text = JSON.stringify(record);
     if (Buffer.byteLength(text) > 1024 * 1024 || text.includes(access.token))
       throw Error('Transcript exceeds private limits');
-    const path = localPath(access),
-      lock = await open(path + '.lock', 'wx', 0o600).catch(() => {
-        throw Error('Archive already active');
-      });
-    try {
+    const path = localPath(access);
+    return withChatLock(path, async () => {
       const client = clientFor(access.token);
       if ((await client.principal()) !== scope.principalId) throw Error('Archive caller differs');
       let previous = await read(path);
@@ -176,10 +174,7 @@ export async function chatTranscriptArchive(directory, clientFor = accessFulcraC
         /* Keep uncertain, never repeat the upload. */
       }
       return { state: intent.state, path: remotePath };
-    } finally {
-      await lock.close();
-      await unlink(path + '.lock');
-    }
+    });
   };
   archive.status = async (/** @type {any} */ access) => {
     const value = await read(localPath(access));

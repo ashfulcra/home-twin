@@ -66,7 +66,7 @@ test('unconfigured provider status does not call model or accept a turn', async 
   ).rejects.toThrow(/configured/i);
 });
 test('running conversation rejects a different turn and changed retry payload', async () => {
-  /** @type {(value?:any)=>void} */let release = () => {};
+  /** @type {(value?:any)=>void} */ let release = () => {};
   const gate = new Promise((resolve) => (release = resolve));
   const worker = await createChatWorker({
     directory: await mkdtemp(join(tmpdir(), 'worker-')),
@@ -94,4 +94,21 @@ test('running conversation rejects a different turn and changed retry payload', 
     release();
     await worker.idle();
   }
+});
+test('completed turn retry with changed input is rejected before acknowledgment', async () => {
+  const worker = await createChatWorker({
+    directory: await mkdtemp(join(tmpdir(), 'worker-')),
+    authorize: async () => ({ scope, home: { name: 'Example' } }),
+    model: {
+      async *stream() {
+        yield { type: 'text', text: 'Hello' };
+      }
+    }
+  });
+  const request = { token: 'current-caller', homeId: 'example', action: 'turn', input: turn };
+  await worker.dispatch(request);
+  await worker.idle();
+  await expect(
+    worker.dispatch({ ...request, input: { ...turn, message: 'Changed question' } })
+  ).rejects.toThrow(/changed|intent/i);
 });

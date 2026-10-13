@@ -16,12 +16,13 @@ export async function runChatTurn({
   tools,
   signal,
   secrets = [],
-  maxRounds = 6
+  maxRounds = 6,
+  reserved = false
 }) {
   const scope = validateChatScope(rawScope),
     input = validateChatTurn(rawInput);
   const created = await journal.createTurn(input);
-  if (!created.created) return created;
+  if (!created.created && !(reserved && created.status === 'queued')) return created;
   let totalText = 0,
     toolCount = 0,
     pendingText = '';

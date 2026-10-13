@@ -54,7 +54,13 @@ export async function createChatWorker({
         })()
       );
     }
-    return journals.get(key);
+    const waiting = journals.get(key);
+    try {
+      return await waiting;
+    } catch (e) {
+      if (journals.get(key) === waiting) journals.delete(key);
+      throw e;
+    }
   }
   const jobKey = (/** @type {any} */ scope, /** @type {string} */ id) =>
     scope.homeId + '/' + scope.principalId + '/' + id;
@@ -92,6 +98,7 @@ export async function createChatWorker({
           if (running.input.turnId !== input.turnId) throw Error('Conversation already active');
           if (JSON.stringify(running.input) !== JSON.stringify(input))
             throw Error('Changed turn intent');
+          await running.admission;
           return { status: 'running', conversationId: input.conversationId, turnId: input.turnId };
         }
         if (active.size >= 8) throw Error('Chat worker busy; retry same turn');
@@ -110,10 +117,19 @@ export async function createChatWorker({
         const tools = createChatHomeTools({ authorize: reauthorize, readSource });
         const job = /** @type {any} */ ({ input, turnId: input.turnId, controller, promise: null });
         active.set(key, job);
+        job.admission = journal.createTurn(input);
+        let admission;
+        try {
+          admission = await job.admission;
+        } catch (e) {
+          active.delete(key);
+          throw e;
+        }
         job.promise = (async () => {
           try {
             const result = await runChatTurn({
               journal,
+              reserved: admission.created,
               scope,
               input,
               authorize: async () => (await reauthorize()).scope,
