@@ -6,13 +6,20 @@ import { fileURLToPath } from 'node:url';
 import { chatTranscriptArchive, chatSourceReader } from './chat-storage.mjs';
 import { persistentChatJournal } from './chat-journal.mjs';
 import { runChatTurn } from './chat-runtime.mjs';
-import { nativeResponsesProvider } from './chat-model-provider.mjs';
+import { loadHouseModels } from './chat-model-settings.mjs';
 import { createChatHomeTools } from './chat-home-tools.mjs';
 import { accessFulcraClient } from './access-fulcra-client.mjs';
 import { homeRole } from '../src/lib/home/access.js';
 import { validateChatScope, validateChatTurn } from '../src/lib/home/chat-contract.js';
 /** Persistent ordinary worker; browser disconnect does not cancel the job. @param {any} options */
-export async function createChatWorker({ directory, authorize, model, readSource, archive }) {
+export async function createChatWorker({
+  directory,
+  authorize,
+  model,
+  modelFor,
+  readSource,
+  archive
+}) {
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const root = await lstat(directory);
   if (!root.isDirectory() || root.isSymbolicLink() || root.mode & 0o077)
@@ -67,14 +74,17 @@ export async function createChatWorker({ directory, authorize, model, readSource
         throw Error('Unsupported chat service fields');
       const access = await bind(request),
         scope = access.scope;
-      if (request.action === 'status') return { available: !!model };
+      const selectedModel = modelFor ? modelFor(scope.homeId) : model;
+      if (request.action === 'status') return { available: !!selectedModel };
       const journal = await journalFor(scope);
       if (request.action === 'turn') {
-        if (!model) throw Error('Model is not configured');
+        if (!selectedModel) throw Error('Model is not configured');
         const input = validateChatTurn(request.input),
           key = jobKey(scope, input.conversationId);
         if (
-          [request.token, ...(model.secrets ?? [])].some((secret) => input.message.includes(secret))
+          [request.token, ...(selectedModel.secrets ?? [])].some((secret) =>
+            input.message.includes(secret)
+          )
         )
           throw Error('Credentials cannot be sent in chat');
         if (active.has(key)) {
@@ -107,10 +117,10 @@ export async function createChatWorker({ directory, authorize, model, readSource
               scope,
               input,
               authorize: async () => (await reauthorize()).scope,
-              model,
+              model: selectedModel,
               tools,
               signal: controller.signal,
-              secrets: [request.token, ...(model.secrets ?? [])]
+              secrets: [request.token, ...(selectedModel.secrets ?? [])]
             });
             if (archive) {
               await reauthorize();
@@ -203,7 +213,8 @@ export async function startChatService(config) {
     });
   const expected = Buffer.from('Bearer ' + config.key);
   const authorize = configuredChatAccess(config);
-  const model = config.model ? nativeResponsesProvider(config.model) : undefined;
+  if (config.model) throw Error('Configure a model separately for each home');
+  const models = await loadHouseModels(config.homes);
   /** @type {any} */ let worker;
   const server = createServer(async (req, res) => {
     const send = (/** @type {number} */ status, /** @type {any} */ value) => {
@@ -253,7 +264,7 @@ export async function startChatService(config) {
     worker = await createChatWorker({
       directory: join(config.directory, 'runs'),
       authorize,
-      model,
+      modelFor: (/** @type {string} */ homeId) => models.get(homeId),
       readSource: chatSourceReader(),
       archive
     });
