@@ -33,6 +33,8 @@ function add(record,input,type,data){if(record.events.length>=5000)throw new Err
  /** @param {any} record @param {any} input */
 function find(record,input){const turn=record.turns.find((/** @type {any} */t)=>t.input.turnId===input.turnId);if(!turn||JSON.stringify(turn.input)!==JSON.stringify(validateChatTurn(input)))throw new Error('Unknown or changed turn intent');return turn;}
  return {
+ /** @param {string} conversationId */
+ async readConversation(conversationId){return serial(conversationId,async path=>read(path));},
  /** @param {any} rawInput */
  async createTurn(rawInput){const input=validateChatTurn(rawInput);return serial(input.conversationId,async path=>{const record=await read(path);const old=record.turns.find((/** @type {any} */t)=>t.input.turnId===input.turnId);if(old){find(record,input);return {created:false,status:old.status};}if(record.turns.some((/** @type {any} */t)=>!terminal.has(t.status)))throw new Error('Conversation already active');if(record.turns.length>=100)throw new Error('Conversation turn limit');record.turns.push({input,status:'queued'});add(record,input,'queued',{});await atomic(path,record);return {created:true,status:'queued'};});},
  /** @param {any} input @param {string} type @param {any} data */
