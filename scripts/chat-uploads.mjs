@@ -52,6 +52,16 @@ export async function createChatUploads({
       root: scope.root
     };
   }
+  function credentials(/** @type {any} */ current, /** @type {any} */ request) {
+    return [request.token, ...secretsFor(current.scope)].filter(
+      (s) => typeof s === 'string' && s.length >= 8
+    );
+  }
+  function rejectSecrets(/** @type {Uint8Array|string} */ bytes, /** @type {string[]} */ secrets) {
+    const raw = Buffer.from(bytes);
+    if (secrets.some((secret) => raw.includes(Buffer.from(secret))))
+      throw Error('Credentials cannot be stored as a home source');
+  }
   async function folder(/** @type {any} */ scope, /** @type {string} */ id) {
     const dir = join(directory, scope.homeId, scope.principalId, chatUploadId(id));
     for (const part of [
@@ -149,13 +159,22 @@ export async function createChatUploads({
       if (!metadata || !bytes || sha(bytes) !== job.input.sha256)
         throw Error('Confirmed original unavailable or changed');
       const record = JSON.parse(Buffer.from(metadata).toString('utf8'));
-      if (
-        record.id !== id ||
-        record.homeId !== current.scope.homeId ||
-        record.authorUserId !== current.scope.principalId ||
-        record.attachment?.sha256 !== job.input.sha256 ||
-        record.value !== job.input.title
-      )
+      const expected = {
+        id,
+        homeId: current.scope.homeId,
+        kind: 'evidence',
+        value: job.input.title,
+        attachment: {
+          sha256: job.input.sha256,
+          sizeBytes: job.input.sizeBytes,
+          mimeType: job.input.mimeType,
+          extension: SOURCE_TYPES[job.input.mimeType],
+          originalName: job.input.originalName
+        },
+        authorUserId: current.scope.principalId,
+        recordedAt: job.recordedAt
+      };
+      if (!Buffer.from(metadata).equals(Buffer.from(JSON.stringify(expected))))
         throw Error('Original metadata changed');
       return {
         source: {
@@ -170,8 +189,9 @@ export async function createChatUploads({
     },
     /** @param {any} input @param {any} request */ async prepare(input, request) {
       const current = await access(request),
-        value = validateChatUpload(input),
-        dir = await folder(current.scope, value.uploadId),
+        value = validateChatUpload(input);
+      rejectSecrets(JSON.stringify(value), credentials(current, request));
+      const dir = await folder(current.scope, value.uploadId),
         path = join(dir, 'manifest.json');
       return withChatLock(path, async () => {
         let job;
@@ -258,6 +278,29 @@ export async function createChatUploads({
             job.input.sizeBytes - input.index * CHAT_UPLOAD_CHUNK_BYTES
           );
         if (bytes.length !== expected) throw Error('Source chunk length differs');
+        const secrets = credentials(current, request);
+        rejectSecrets(bytes, secrets);
+        for (const secret of secrets) {
+          const neighbors = [];
+          for (const index of [input.index - 1, input.index + 1]) {
+            try {
+              const p = join(dir, String(index) + '.bin'),
+                s = await lstat(p);
+              if (!s.isFile() || s.isSymbolicLink() || s.mode & 0o077)
+                throw Error('Private source chunk required');
+              const b = await readFile(p);
+              neighbors.push(
+                index < input.index
+                  ? b.subarray(Math.max(0, b.length - secret.length + 1))
+                  : b.subarray(0, secret.length - 1)
+              );
+            } catch (e) {
+              if (!e || typeof e !== 'object' || !('code' in e) || e.code !== 'ENOENT') throw e;
+              neighbors.push(Buffer.alloc(0));
+            }
+          }
+          rejectSecrets(Buffer.concat([neighbors[0], bytes, neighbors[1]]), [secret]);
+        }
         const chunkPath = join(dir, String(input.index) + '.bin'),
           digest = sha(bytes);
         if (job.received.includes(input.index)) {

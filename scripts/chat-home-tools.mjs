@@ -96,7 +96,7 @@ export function createChatHomeTools({ authorize, readSource, uploadedSource }) {
       if (name === 'search_records')
         return { records: searchHomeKnowledge(home, args.query).slice(0, 20) };
       if (['read_source', 'read_source_pages'].includes(name)) {
-        if (uploadedSource) {
+        if (uploadedSource && ['maintainer', 'contributor'].includes(access.role)) {
           const original = await uploadedSource(args.sourceId, access, args.pages ?? []);
           if (original) return original;
         }

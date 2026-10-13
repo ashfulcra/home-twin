@@ -1,6 +1,17 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 let processing = 0;
+/** @param {Uint8Array} bytes */
+export function processChatText(bytes) {
+  const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  if (text.includes('\0')) throw Error('Source is not text');
+  return {
+    text: text.slice(0, 16000),
+    excerpt: text.length > 16000,
+    characterCount: text.length,
+    charactersRead: Math.min(16000, text.length)
+  };
+}
 /** Fixed extractor, no caller-supplied paths/commands. @param {Uint8Array} bytes @param {string} mime @param {number[]} [pages] */
 export async function processChatFile(bytes, mime, pages = []) {
   if (!['image/png', 'image/jpeg', 'image/webp', 'application/pdf'].includes(mime))

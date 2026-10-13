@@ -5,7 +5,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { accessFulcraClient } from './access-fulcra-client.mjs';
 import { validateChatScope } from '../src/lib/home/chat-contract.js';
 import { sourceLocation } from '../src/lib/server/source-location.js';
-import { processChatFile } from './chat-file-processing.mjs';
+import { processChatFile, processChatText } from './chat-file-processing.mjs';
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 /** Read only an existing source from fresh current home evidence. @param {any} [clientFor] */
 export function chatSourceReader(clientFor = accessFulcraClient) {
@@ -65,8 +65,7 @@ export function chatSourceReader(clientFor = accessFulcraClient) {
       title: source.title,
       sha256: expected,
       originalAvailable: true,
-      text: text.slice(0, 16000),
-      excerpt: text.length > 16000
+      ...processChatText(file.bytes)
     };
   };
 }

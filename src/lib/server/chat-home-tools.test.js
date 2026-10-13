@@ -22,6 +22,18 @@ const home = {
   schedules: [],
   contacts: []
 };
+test('viewer accepted-source read does not attempt contributor-only upload recovery', async () => {
+  const tools = createChatHomeTools({
+    authorize: async () => ({ home, role: 'viewer' }),
+    uploadedSource: async () => {
+      throw Error('Upload role read-only');
+    },
+    readSource: async () => ({ id: 'source-1', text: 'Accepted record' })
+  });
+  expect(await tools.execute('read_source', { sourceId: 'source-1' })).toMatchObject({
+    text: 'Accepted record'
+  });
+});
 test('tools re-authorize each call and never accept arbitrary vault paths', async () => {
   let checks = 0;
   const tools = createChatHomeTools({

@@ -10,7 +10,7 @@ import { loadHouseModels } from './chat-model-settings.mjs';
 import { createChatHomeTools } from './chat-home-tools.mjs';
 import { createChatUploads } from './chat-uploads.mjs';
 import { chatFileClient } from './chat-file-client.mjs';
-import { processChatFile } from './chat-file-processing.mjs';
+import { processChatFile, processChatText } from './chat-file-processing.mjs';
 import { accessFulcraClient } from './access-fulcra-client.mjs';
 import { homeRole } from '../src/lib/home/access.js';
 import { validateChatScope, validateChatTurn } from '../src/lib/home/chat-contract.js';
@@ -158,9 +158,7 @@ export async function createChatWorker({
                 if (original.source.attachment.mimeType === 'text/plain')
                   return {
                     ...value,
-                    text: new TextDecoder('utf-8', { fatal: true })
-                      .decode(original.bytes)
-                      .slice(0, 16000)
+                    ...processChatText(original.bytes)
                   };
                 return {
                   ...value,

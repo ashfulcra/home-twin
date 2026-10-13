@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
@@ -20,6 +20,52 @@ const scope = {
     sizeBytes: bytes.length,
     sha256: createHash('sha256').update(bytes).digest('hex')
   };
+test('known credentials never enter source metadata or persisted chunks', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'chat-secret-')),
+    secret = 'synthetic-provider-secret';
+  const uploads = await createChatUploads({
+    directory,
+    authorize: async () => ({ scope }),
+    ioFor: () => ({}),
+    secretsFor: () => [secret]
+  });
+  const request = { token: 'synthetic-caller', homeId: 'example' };
+  await expect(uploads.prepare({ ...input, title: secret }, request)).rejects.toThrow(
+    /credential/i
+  );
+  const raw = Buffer.from(secret);
+  await uploads.prepare({ ...input, sizeBytes: raw.length }, request);
+  await expect(
+    uploads.chunk({ uploadId: input.uploadId, index: 0, base64: raw.toString('base64') }, request)
+  ).rejects.toThrow(/credential/i);
+  await expect(
+    lstat(join(directory, scope.homeId, scope.principalId, input.uploadId, '0.bin'))
+  ).rejects.toMatchObject({ code: 'ENOENT' });
+});
+test('out-of-order adjacent chunks cannot persist a complete credential across a boundary', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'chat-secret-boundary-')),
+    secret = 'synthetic-provider-secret';
+  const uploads = await createChatUploads({
+    directory,
+    authorize: async () => ({ scope }),
+    ioFor: () => ({}),
+    secretsFor: () => [secret]
+  });
+  const request = { token: 'synthetic-caller', homeId: 'example' },
+    first = Buffer.concat([
+      Buffer.alloc(3 * 1024 * 1024 - 10, 65),
+      Buffer.from(secret.slice(0, 10))
+    ]),
+    last = Buffer.from(secret.slice(10));
+  await uploads.prepare({ ...input, sizeBytes: first.length + last.length }, request);
+  await uploads.chunk(
+    { uploadId: input.uploadId, index: 1, base64: last.toString('base64') },
+    request
+  );
+  await expect(
+    uploads.chunk({ uploadId: input.uploadId, index: 0, base64: first.toString('base64') }, request)
+  ).rejects.toThrow(/credential/i);
+});
 test('stable uploaded chunks survive restart and original writes only once after exact readback', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'chat-upload-')),
     files = new Map();
@@ -67,6 +113,13 @@ test('stable uploaded chunks survive restart and original writes only once after
       homeId: 'example'
     })
   ).toMatchObject({ source: { id: 'evidence-' + input.uploadId, title: input.title }, bytes });
+  const metaPath = [...files.keys()].find((p) => p.includes('/contributions/')),
+    meta = JSON.parse(files.get(metaPath).toString());
+  meta.recordedAt = '2000-01-01T00:00:00.000Z';
+  files.set(metaPath, Buffer.from(JSON.stringify(meta)));
+  await expect(
+    uploads.source('evidence-' + input.uploadId, { token: 'synthetic-caller', homeId: 'example' })
+  ).rejects.toThrow(/metadata/i);
 });
 test('viewers, changed stable metadata and chunk collisions cannot create originals', async () => {
   let role = 'viewer',

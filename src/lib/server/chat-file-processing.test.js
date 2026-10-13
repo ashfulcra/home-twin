@@ -1,5 +1,11 @@
 import { test, expect } from 'vitest';
-import { processChatFile } from '../../../scripts/chat-file-processing.mjs';
+import { processChatFile, processChatText } from '../../../scripts/chat-file-processing.mjs';
+test('text excerpt declares coverage instead of treating omitted text as absent', () => {
+  const text = 'a'.repeat(17000),
+    result = processChatText(Buffer.from(text));
+  expect(result).toMatchObject({ excerpt: true, characterCount: 17000, charactersRead: 16000 });
+  expect(result.text.length).toBe(16000);
+});
 import { execFileSync } from 'node:child_process';
 test('PDF text and selected page images are real evidence and page coverage is explicit', async () => {
   const bytes = execFileSync('python3', [
