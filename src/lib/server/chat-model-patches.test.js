@@ -495,3 +495,20 @@ test('a retained decision with only an unreadable proposal stage is held instead
   await writeFile(file + '.tmp', '{');
   await expect(f.patch.list(f.context.conversationId, f.request)).rejects.toThrow();
 });
+test('native publisher reads only an exact finalized owner decision and no raw home or token', async () => {
+  const f = await fixture(),
+    a = await f.patch.prepare(modelPatchDraft(), f.context, f.request),
+    input = { actionId: a.actionId, conversationId: a.conversationId, digest: a.digest };
+  expect(typeof f.patch.readApproved).toBe('function');
+  await expect(f.patch.readApproved(input, f.request)).rejects.toThrow();
+  await f.patch.approve(input, f.request);
+  const proof = await f.patch.readApproved(input, f.request);
+  expect(proof.digest).toBe(a.digest);
+  expect(proof.approval.decision.proposalDigest).toBe(a.digest);
+  expect(JSON.stringify(proof)).not.toContain('synthetic-caller');
+  expect(JSON.stringify(proof)).not.toContain('userOverrides');
+  f.home.revision++;
+  expect((await f.patch.readApproved(input, f.request)).digest).toBe(a.digest);
+  f.setRole('contributor');
+  await expect(f.patch.readApproved(input, f.request)).rejects.toThrow(/owner/);
+});

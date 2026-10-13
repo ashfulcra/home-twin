@@ -528,6 +528,36 @@ export async function createChatModelPatches({
         return view(j, last);
       });
     },
+    /** Server-only historical approval load. Does not assert a current publication baseline or perform IO effects. */
+    async readApproved(/** @type {any} */ input, /** @type {any} */ request) {
+      if (
+        !exact(input, ['actionId', 'conversationId', 'digest']) ||
+        !uuid.test(input.actionId) ||
+        !uuid.test(input.conversationId) ||
+        !hex.test(input.digest)
+      )
+        throw Error('Exact reviewed model proposal required');
+      const a = await access(request);
+      requireOwner(a);
+      const f = await folders(a.scope, input.conversationId);
+      if (!f?.conversation) throw Error('Saved model proposal unavailable');
+      const j = await load(
+        join(f.conversation, input.actionId + '.json'),
+        a.scope,
+        input.conversationId
+      );
+      if (j.digest !== input.digest) throw Error('Reviewed model digest differs');
+      const decision = await readDecision(
+        join(f.conversation, input.actionId + '.decision.json'),
+        j
+      );
+      if (!decision || decision.staged) throw Error('Finalized exact owner decision required');
+      const last = await access(request);
+      requireOwner(last);
+      if (canonicalJSON(binding(last.scope)) !== canonicalJSON(j.proposal.binding))
+        throw Error('Current owner decision scope changed');
+      return structuredClone({ proposal: j.proposal, digest: j.digest, approval: decision.j });
+    },
     /** Read-only, exact current-version display. Original receipts remain explicitly preparation-time only. */
     async preview(/** @type {any} */ input, /** @type {any} */ request) {
       if (
