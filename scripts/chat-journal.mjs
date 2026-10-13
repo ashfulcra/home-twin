@@ -45,7 +45,7 @@ function eventData(type, data) {
     queued: [],
     started: [],
     text: ['text'],
-    tool: ['name', 'status'],
+    tool: ['name', 'status', 'summary'],
     completed: [],
     cancelled: [],
     interrupted: [],

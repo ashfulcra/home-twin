@@ -30,6 +30,80 @@ const setup = async () => ({
     }
   }
 });
+test('later turns retain actual prior source-read coverage without persisting images or arbitrary metadata', async () => {
+  const x = await setup();
+  let round = 0,
+    later = '';
+  x.tools.execute = async () => ({
+    id: 'source-1',
+    sha256: 'a'.repeat(64),
+    originalAvailable: true,
+    pageCount: 6,
+    pages: [6],
+    partial: true,
+    text: 'Private original text',
+    path: '/private/arbitrary',
+    media: [{ mimeType: 'image/jpeg', data: '/9j/', page: 6 }]
+  });
+  x.model = {
+    async *stream(/** @type {any[]} */ context) {
+      if (round++ === 0)
+        yield {
+          type: 'tool',
+          name: 'read_source_pages',
+          arguments: '{"sourceId":"source-1","pages":[6]}',
+          callId: 'read-page-six'
+        };
+      else {
+        later = JSON.stringify(context);
+        yield { type: 'text', text: 'Read verified.' };
+      }
+    }
+  };
+  await runChatTurn(x);
+  await runChatTurn({
+    ...x,
+    input: {
+      ...input,
+      turnId: '44444444-4444-4444-8444-444444444444',
+      message: 'Which pages did you actually read earlier?'
+    }
+  });
+  expect(later).toContain('Earlier authorized tool receipt');
+  expect(later).toContain('\\"pages\\":[6]');
+  const raw = JSON.stringify(await x.journal.readEvents(input.conversationId));
+  expect(raw).not.toContain('/private/arbitrary');
+  expect(raw).not.toContain('/9j/');
+  expect(raw).not.toContain('Private original text');
+});
+test('malformed historical tool summaries are skipped rather than forwarded as authorized receipts', async () => {
+  const x = await setup();
+  await x.journal.createTurn(input);
+  await x.journal.appendEvent(input, 'started', {});
+  await x.journal.appendEvent(input, 'tool', {
+    name: 'read_source',
+    status: 'completed',
+    summary: '{"tool":"read_source","sourceId":"source-1","path":"/private/arbitrary"}'
+  });
+  await x.journal.appendEvent(input, 'completed', {});
+  let context = '';
+  x.model = {
+    async *stream(/** @type {any[]} */ items) {
+      context = JSON.stringify(items);
+      yield { type: 'text', text: 'No usable prior receipt.' };
+    }
+  };
+  await runChatTurn({
+    ...x,
+    input: {
+      ...input,
+      turnId: '44444444-4444-4444-8444-444444444444',
+      message: 'What did you read earlier?'
+    }
+  });
+  expect(context).not.toContain('/private/arbitrary');
+  expect(context).not.toContain('Earlier authorized tool receipt');
+});
 test('attached page images reach the model without entering durable events', async () => {
   const x = await setup();
   x.input = { ...input, attachmentIds: ['source-1'] };

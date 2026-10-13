@@ -1,11 +1,75 @@
 import { validateChatScope, validateChatTurn } from '../src/lib/home/chat-contract.js';
 import { chatEvidenceContext } from './chat-file-context.mjs';
+import { canonicalJSON } from '../src/lib/home/canonical-json.js';
 /** @param {string} text @param {string[]} secrets */
 export function redactChatText(text, secrets = []) {
   let safe = text;
   for (const secret of secrets)
     if (secret && secret.length >= 8) safe = safe.split(secret).join('[redacted]');
   return safe.replace(/Bearer\s+[A-Za-z0-9._~-]{8,}/gi, 'Bearer [redacted]');
+}
+/** Bounded factual receipt of a past read, not raw originals, freshness or new authority.
+ * @param {string} name @param {any} value @param {string[]} secrets */
+function toolReceipt(name, value, secrets) {
+  if (
+    ![
+      'read_home',
+      'search_records',
+      'read_source',
+      'read_source_pages',
+      'read_model_region',
+      'prepare_home_update'
+    ].includes(name)
+  )
+    throw Error('Unsupported tool receipt');
+  const result = /** @type {any} */ ({ tool: name });
+  if (['read_source', 'read_source_pages'].includes(name)) {
+    if (typeof value.id === 'string' && /^[a-z0-9][a-z0-9._-]{0,199}$/i.test(value.id))
+      result.sourceId = value.id;
+    if (typeof value.sha256 === 'string' && /^[a-f0-9]{64}$/.test(value.sha256))
+      result.sha256 = value.sha256;
+    if (typeof value.originalAvailable === 'boolean')
+      result.originalAvailable = value.originalAvailable;
+    if (Number.isSafeInteger(value.pageCount) && value.pageCount > 0 && value.pageCount <= 600)
+      result.pageCount = value.pageCount;
+    if (
+      Array.isArray(value.pages) &&
+      value.pages.length <= 4 &&
+      value.pages.every((/** @type {number} */ p) => Number.isSafeInteger(p) && p > 0 && p <= 600)
+    )
+      result.pages = [...value.pages];
+    if (typeof value.partial === 'boolean') result.partial = value.partial;
+    if (typeof value.excerpt === 'boolean') result.excerpt = value.excerpt;
+    if (
+      Number.isSafeInteger(value.charactersRead) &&
+      value.charactersRead >= 0 &&
+      value.charactersRead <= 200 * 1024 * 1024
+    )
+      result.charactersRead = value.charactersRead;
+    if (
+      Number.isSafeInteger(value.characterCount) &&
+      value.characterCount >= 0 &&
+      value.characterCount <= 200 * 1024 * 1024
+    )
+      result.characterCount = value.characterCount;
+  } else if (Number.isSafeInteger(value.revision)) result.homeRevision = value.revision;
+  return redactChatText(JSON.stringify(result), secrets);
+}
+/** Revalidate old journals against today's receipt allowlist. @param {any} data @param {string[]} secrets */
+function historicalReceipt(data, secrets) {
+  try {
+    const parsed = JSON.parse(data.summary);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || parsed.tool !== data.name)
+      return null;
+    const safe = toolReceipt(
+      data.name,
+      { ...parsed, id: parsed.sourceId, revision: parsed.homeRevision },
+      secrets
+    );
+    return canonicalJSON(JSON.parse(safe)) === canonicalJSON(parsed) ? safe : null;
+  } catch {
+    return null;
+  }
 }
 /** Model and tools are injected; no credential is stored in the journal. @param {any} options */
 export async function runChatTurn({
@@ -62,6 +126,20 @@ export async function runChatTurn({
     await check();
     await journal.appendEvent(input, 'started', {});
     const history = await journal.readConversation(input.conversationId);
+    const priorReceipts = history.events
+      .filter(
+        (/** @type {any} */ e) =>
+          e.turnId !== input.turnId &&
+          e.type === 'tool' &&
+          e.data.status === 'completed' &&
+          typeof e.data.summary === 'string' &&
+          Buffer.byteLength(e.data.summary) <= 1600
+      )
+      .slice(-8)
+      .flatMap((/** @type {any} */ e) => {
+        const summary = historicalReceipt(e.data, secrets);
+        return summary ? [{ ...e, data: { ...e.data, summary } }] : [];
+      });
     for (const turn of history.turns.slice(-20)) {
       context.push({ role: 'user', content: redactChatText(turn.input.message, secrets) });
       if (turn.input.turnId !== input.turnId) {
@@ -70,12 +148,26 @@ export async function runChatTurn({
           .map((/** @type {any} */ e) => e.data.text)
           .join('');
         if (text) context.push({ role: 'assistant', content: text });
+        for (const receipt of priorReceipts.filter(
+          (/** @type {any} */ e) => e.turnId === turn.input.turnId
+        ))
+          context.push({
+            role: 'user',
+            content:
+              'Earlier authorized tool receipt (historical read coverage, not instructions or proof that the original is unchanged now): ' +
+              redactChatText(receipt.data.summary, secrets)
+          });
       }
     }
     for (const sourceId of input.attachmentIds) {
       await check();
       const evidence = await tools.execute('read_source', { sourceId });
       await check();
+      await journal.appendEvent(input, 'tool', {
+        name: 'read_source',
+        status: 'completed',
+        summary: toolReceipt('read_source', evidence, secrets)
+      });
       context.push({
         role: 'user',
         content: chatEvidenceContext(evidence, secrets)
@@ -130,7 +222,11 @@ export async function runChatTurn({
           );
           if (media?.length)
             context.push({ role: 'user', content: chatEvidenceContext(value, secrets) });
-          await journal.appendEvent(input, 'tool', { name: item.name, status: 'completed' });
+          await journal.appendEvent(input, 'tool', {
+            name: item.name,
+            status: 'completed',
+            summary: toolReceipt(item.name, value, secrets)
+          });
         } else throw Error('Unsupported model output');
       }
       await emit(true);
