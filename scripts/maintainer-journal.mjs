@@ -1,6 +1,7 @@
 import {mkdirSync,lstatSync,readFileSync,writeFileSync,renameSync,rmdirSync,realpathSync} from 'node:fs';
 import {join,resolve,relative,isAbsolute,sep} from 'node:path';import {createHash,randomUUID} from 'node:crypto';
 import {canonicalJSON} from '../src/lib/home/canonical-json.js';
+import {persistInspectionReceipt} from './inspection-receipt.mjs';
 /** @param {any} value */
 const hash=value=>createHash('sha256').update(canonicalJSON(value)).digest('hex');
 /** Local single-writer checkpoint; abandoned locks require inspection, never expiry stealing.
@@ -23,10 +24,16 @@ export function persistCycle(directory,cycle){
    if(saved.cycleId!==cycle.cycleId||hash(payload)!==integrity||canonicalJSON(saved.material)!==canonicalJSON(cycle.material))throw Error('Report integrity mismatch; preserve and inspect original files');
    recovered=previous?.lastCycleId!==cycle.cycleId;
   }catch(e){if(!(e&&typeof e==='object'&&'code' in e&&e.code==='ENOENT'))throw e;const staged=join(dir,'.report-'+randomUUID()+'.json');writeFileSync(staged,JSON.stringify({...cycle,integrity:hash(cycle)},null,2),{flag:'wx',mode:0o600});renameSync(staged,reportPath);}
-  if(previous?.lastCycleId===cycle.cycleId)return {changed:false,recovered:false,reportPath:realpathSync(reportPath),cycleId:cycle.cycleId};
+  /** @param {boolean} changed @param {boolean} recovered */
+  function result(changed,recovered){
+   const checks=cycle.material.sourceChecks??[];
+   const invocationPath=persistInspectionReceipt(dir,{kind:'maintainer-cycle',scope,reportId:cycle.cycleId,observedAt:cycle.observedAt,summary:{sourceAuditRequested:Object.hasOwn(cycle.material,'sourceChecks'),sourceCheckCount:checks.length,changedSourceCount:checks.filter((/** @type {any} */ s)=>s.status==='changed').length,unverifiedSourceCount:checks.filter((/** @type {any} */ s)=>s.status==='unverified').length,unavailableSourceCount:checks.filter((/** @type {any} */ s)=>s.status==='unavailable').length,outOfScopeSourceCount:checks.filter((/** @type {any} */ s)=>s.status==='out-of-scope').length,unavailableMemberCount:cycle.material.unavailableMembers.length}});
+   return {changed,recovered,reportPath:realpathSync(reportPath),cycleId:cycle.cycleId,invocationPath};
+  }
+  if(previous?.lastCycleId===cycle.cycleId)return result(false,false);
   const checkpoint={schema:'home-twin-checkpoint/1',...scope,lastCycleId:cycle.cycleId,workIds:cycle.work.map((/** @type {any} */ t)=>t.id)};
   const temporary=join(dir,'.checkpoint-'+randomUUID()+'.json');writeFileSync(temporary,JSON.stringify(checkpoint,null,2),{flag:'wx',mode:0o600});renameSync(temporary,checkpointPath);
-  return {changed:true,recovered,reportPath:realpathSync(reportPath),cycleId:cycle.cycleId};
+  return result(true,recovered);
  }finally{rmdirSync(lock);}
 }
 

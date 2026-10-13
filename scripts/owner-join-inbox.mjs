@@ -2,6 +2,7 @@ import {lstatSync,readFileSync,writeFileSync,mkdirSync,renameSync,rmdirSync,real
 import {resolve,join} from 'node:path';import {createHash,randomUUID} from 'node:crypto';
 import {canonicalJSON} from '../src/lib/home/canonical-json.js';
 import {loadJoinInbox} from '../src/lib/server/join-inbox.js';
+import {persistInspectionReceipt} from './inspection-receipt.mjs';
 const hash=(/** @type {any} */v)=>createHash('sha256').update(canonicalJSON(v)).digest('hex');
 /** Read-only discovery with private immutable reports in the existing maintainer state.
  * @param {string} directory @param {any} scope @param {any} client */
@@ -20,6 +21,7 @@ export async function runOwnerJoinInbox(directory,scope,client){
   if(prior)validate(read(join(reports,prior.reportId+'.json')),prior.reportId);
   const reportPath=join(reports,reportId+'.json');const existing=read(reportPath);if(existing)validate(existing,reportId);else{const report={schema:'home-twin-owner-join-inbox/1',reportId,scope:material.scope,material,inbox,observedAt:new Date().toISOString(),remoteWrites:false};const staged=join(dir,'.join-report-'+randomUUID()+'.json');writeFileSync(staged,JSON.stringify({...report,integrity:hash(report)},null,2),{flag:'wx',mode:0o600});renameSync(staged,reportPath);}
   const changed=prior?.reportId!==reportId;if(changed){const staged=join(dir,'.join-checkpoint-'+randomUUID()+'.json');writeFileSync(staged,JSON.stringify({schema:'home-twin-join-inbox-checkpoint/1',scope:material.scope,reportId},null,2),{flag:'wx',mode:0o600});renameSync(staged,join(dir,'join-inbox.json'));}
-  return {changed,reportPath:realpathSync(reportPath),reportId,inbox,remoteWrites:false};
+  const invocationPath=persistInspectionReceipt(dir,{kind:'owner-join-inbox',scope:material.scope,reportId,observedAt:new Date().toISOString(),summary:{attentionCount:inbox.attentionCount,unavailableCount:inbox.unavailableCount,unsupportedCount:inbox.unsupportedCount,more:inbox.more,reviewIncomplete:inbox.reviewIncomplete}});
+  return {changed,reportPath:realpathSync(reportPath),reportId,inbox,remoteWrites:false,invocationPath};
  }finally{rmdirSync(lock);}
 }

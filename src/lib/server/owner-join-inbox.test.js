@@ -1,5 +1,5 @@
 import {test,expect} from 'vitest';
-import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,readdirSync,statSync} from 'node:fs';
 import {tmpdir} from 'node:os';import {join} from 'node:path';
 import {runOwnerJoinInbox} from '../../../scripts/owner-join-inbox.mjs';
 const owner='11111111-1111-4111-8111-111111111111';
@@ -10,3 +10,29 @@ test('outage or canonical changes do not replace prior confirmed report',async()
 test('corrupt retained report is a hold rather than silent replacement',async()=>{const f=fixture();try{const one=await runOwnerJoinInbox(f.dir,f.scope,f.client);writeFileSync(one.reportPath,'{}',{mode:0o600});await expect(runOwnerJoinInbox(f.dir,f.scope,f.client)).rejects.toThrow(/integrity|report/i);}finally{f.clean();}});
 test('unsafe checkpoint permissions and symlinked reports hold without replacing originals',async()=>{const f=fixture();try{const {chmodSync,symlinkSync}=await import('node:fs');chmodSync(join(f.dir,'checkpoint.json'),0o644);await expect(runOwnerJoinInbox(f.dir,f.scope,f.client)).rejects.toThrow(/private/i);expect(f.getReads()).toBe(0);chmodSync(join(f.dir,'checkpoint.json'),0o600);const one=await runOwnerJoinInbox(f.dir,f.scope,f.client);const saved=readFileSync(one.reportPath);rmSync(one.reportPath);writeFileSync(join(f.dir,'retained.json'),saved,{mode:0o600});symlinkSync(join(f.dir,'retained.json'),one.reportPath);await expect(runOwnerJoinInbox(f.dir,f.scope,f.client)).rejects.toThrow(/private|symlink/i);expect(readFileSync(join(f.dir,'retained.json'))).toEqual(saved);}finally{f.clean();}});
 test('a retained report can recover a missing inbox checkpoint while preserving original observation time',async()=>{const f=fixture();try{const one=await runOwnerJoinInbox(f.dir,f.scope,f.client);const prior=readFileSync(one.reportPath);rmSync(join(f.dir,'join-inbox.json'));const next=await runOwnerJoinInbox(f.dir,f.scope,f.client);expect(next).toMatchObject({changed:true,reportId:one.reportId,reportPath:one.reportPath});expect(readFileSync(one.reportPath)).toEqual(prior);expect((await runOwnerJoinInbox(f.dir,f.scope,f.client)).changed).toBe(false);}finally{f.clean();}});
+
+
+test('identical authenticated inbox inspection retains a distinct receipt and original reports/checkpoints',async()=>{
+ const f=fixture();try{
+  const one=await runOwnerJoinInbox(f.dir,f.scope,f.client);expect(one.invocationPath).toEqual(expect.any(String));
+  const report=readFileSync(one.reportPath);const checkpoint=readFileSync(join(f.dir,'join-inbox.json'));const maintainer=readFileSync(join(f.dir,'checkpoint.json'));
+  const two=await runOwnerJoinInbox(f.dir,f.scope,f.client);expect(two.changed).toBe(false);expect(two.invocationPath).not.toBe(one.invocationPath);
+  const receipt=JSON.parse(readFileSync(two.invocationPath,'utf8'));expect(receipt).toMatchObject({kind:'owner-join-inbox',scope:f.scope,reportId:one.reportId,remoteWrites:false,summary:{attentionCount:0,unavailableCount:0,unsupportedCount:0,more:false,reviewIncomplete:false}});
+  expect(Number.isFinite(Date.parse(receipt.observedAt))).toBe(true);expect(statSync(two.invocationPath).mode&0o077).toBe(0);
+  expect(readFileSync(one.reportPath)).toEqual(report);expect(readFileSync(join(f.dir,'join-inbox.json'))).toEqual(checkpoint);expect(readFileSync(join(f.dir,'checkpoint.json'))).toEqual(maintainer);
+ }finally{f.clean();}
+});
+test('failed owner inbox reads never add a successful receipt',async()=>{
+ const f=fixture();try{
+  await runOwnerJoinInbox(f.dir,f.scope,f.client);const before=readdirSync(join(f.dir,'inspection-receipts'));
+  f.client.inbox.incoming=async()=>{throw Error('403 unavailable');};await expect(runOwnerJoinInbox(f.dir,f.scope,f.client)).rejects.toThrow('unavailable');expect(readdirSync(join(f.dir,'inspection-receipts'))).toEqual(before);
+ }finally{f.clean();}
+});
+
+test('partial owner discovery remains explicit in its persistence receipt',async()=>{
+ const f=fixture();try{
+  Object.assign(f.client.inbox,{incoming:async()=>[{fulcra_data_types:['file:/shared/home-twin/example/join-requests/']}]});
+  const result=await runOwnerJoinInbox(f.dir,f.scope,f.client);const receipt=JSON.parse(readFileSync(result.invocationPath,'utf8'));
+  expect(result.inbox.unsupportedCount).toBe(1);expect(receipt.summary.unsupportedCount).toBe(1);expect(receipt.remoteWrites).toBe(false);
+ }finally{f.clean();}
+});

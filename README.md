@@ -94,6 +94,12 @@ Layout can show the same estimated room extents in 2D or a selectable 3D schemat
 
 Find records searches the current home’s equipment facts, providers and their trades, service history and schedules. It shows recorded provider phone/email, actual completed service dates and source links. Search uses words rather than generating an answer; no result means no matching recorded evidence, not absence of the system or maintenance. Held review items and private maintainer journals are excluded.
 
+### Inspection times and private execution receipts
+
+Each successful maintainer cycle and separate owner inbox inspection stores a metadata-only receipt in the existing private state’s `inspection-receipts/` folder, including unchanged checks. Receipts link the retained report ID to its current supplied observation time and local persistence time, and retain source-access/discovery limits. They contain no source bodies or caller credentials. Original reports and unchanged checkpoints keep their historical bytes and timestamps; unchanged commands stay quiet.
+
+A receipt proves local inspection persistence. It does not itself prove a scheduled trigger, authentication from offline input, complete source/inbox discovery, member delivery or approval. Check the receipt’s audit/discovery flags and the referenced report; aborted inspections, failed scope checks or occupied locks do not produce a successful receipt. Partial access or discovery stays explicit in the summary and referenced report. No receipt authorizes publication or access changes.
+
 ### Changes to original evidence
 
 Opening an original checks its exact bytes against a recorded SHA-256. Changed or invalid recorded checksums return a conflict; they do not update accepted facts or the historical checksum. Legacy references without a checksum remain unverified, and uploaded originals retain their checksum and size checks. Reads always use the current caller’s permissions.

@@ -1,7 +1,7 @@
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {test,expect} from 'vitest';
-import {mkdtempSync,readFileSync,readdirSync,writeFileSync,chmodSync,mkdirSync,rmdirSync} from 'node:fs';
+import {mkdtempSync,readFileSync,readdirSync,writeFileSync,chmodSync,mkdirSync,rmdirSync,statSync,symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';import {join} from 'node:path';
 import {buildMaintainerCycle} from './maintainer-cycle.js';
 import {assertExternalState,persistCycle} from '../../../scripts/maintainer-journal.mjs';
@@ -29,4 +29,36 @@ test('actual process crash preserves report and blocks takeover until abandoned 
  const script=`import fs from 'node:fs';import {syncBuiltinESMExports} from 'node:module';const original=fs.renameSync;fs.renameSync=(a,b)=>{if(b.endsWith('checkpoint.json'))process.kill(process.pid,'SIGKILL');return original(a,b);};syncBuiltinESMExports();const {persistCycle}=await import(${JSON.stringify(modulePath)});persistCycle(${JSON.stringify(p)},${JSON.stringify(c)});`;
  const child=spawnSync(process.execPath,['--input-type=module','-e',script]);expect(child.signal).toBe('SIGKILL');expect(()=>persistCycle(p,c)).toThrow('lock');
  const report=JSON.parse(readFileSync(join(p,'reports',c.cycleId+'.json'),'utf8'));expect(report.cycleId).toBe(c.cycleId);rmdirSync(join(p,'.cycle.lock'));expect(persistCycle(p,c).recovered).toBe(true);expect(readdirSync(join(p,'reports'))).toEqual([c.cycleId+'.json']);
+});
+
+
+test('unchanged audited cycles get fresh metadata-only receipts without rewriting report or checkpoint',()=>{
+ const p=folder();const evidence={...input,home:{...input.home,sources:[{id:'manual',title:'private-test-marker'}]},sourceChecks:[{id:'manual',status:'unavailable'}],ingestedAt:'2026-01-01T01:00:00Z'};
+ const one=persistCycle(p,buildMaintainerCycle(evidence));
+ expect(one.invocationPath).toEqual(expect.any(String));
+ const report=readFileSync(one.reportPath);const checkpoint=readFileSync(join(p,'checkpoint.json'));
+ const two=persistCycle(p,buildMaintainerCycle({...evidence,ingestedAt:'2026-01-02T01:00:00Z'}));
+ expect(two.changed).toBe(false);expect(two.invocationPath).not.toBe(one.invocationPath);
+ const receipt=JSON.parse(readFileSync(two.invocationPath,'utf8'));
+ expect(receipt).toMatchObject({schema:'home-twin-inspection-receipt/1',kind:'maintainer-cycle',scope:{homeId:'example',principalId:'owner',root:input.root},reportId:one.cycleId,observedAt:'2026-01-02T01:00:00Z',remoteWrites:false,summary:{sourceAuditRequested:true,sourceCheckCount:1,unavailableSourceCount:1}});
+ expect(Number.isFinite(Date.parse(receipt.recordedAt))).toBe(true);
+ expect(JSON.stringify(receipt)).not.toContain('private-test-marker');
+ expect(statSync(two.invocationPath).mode&0o077).toBe(0);
+ expect(readFileSync(one.reportPath)).toEqual(report);expect(readFileSync(join(p,'checkpoint.json'))).toEqual(checkpoint);
+});
+test('scope/lock/integrity failures do not create another successful receipt',()=>{
+ const p=folder();const cycle=buildMaintainerCycle(input);persistCycle(p,cycle);
+ const before=readdirSync(join(p,'inspection-receipts'));
+ expect(()=>persistCycle(p,buildMaintainerCycle({...input,principalId:'other',home:{...input.home,ownerUserId:'other'}}))).toThrow('scope');
+ mkdirSync(join(p,'.cycle.lock'));expect(()=>persistCycle(p,cycle)).toThrow('lock');rmdirSync(join(p,'.cycle.lock'));
+ writeFileSync(join(p,'reports',cycle.cycleId+'.json'),'{}');expect(()=>persistCycle(p,cycle)).toThrow('integrity');expect(readdirSync(join(p,'inspection-receipts'))).toEqual(before);
+});
+test('a symlinked receipt directory is held rather than writing outside private state',()=>{
+ const p=folder();const external=folder();symlinkSync(external,join(p,'inspection-receipts'));
+ expect(()=>persistCycle(p,buildMaintainerCycle(input))).toThrow(/private|symlink/i);expect(readdirSync(external)).toEqual([]);
+});
+
+test('offline persistence without an observation time never invents one or claims a source audit',()=>{
+ const p=folder();const result=persistCycle(p,buildMaintainerCycle(input));const receipt=JSON.parse(readFileSync(result.invocationPath,'utf8'));
+ expect(receipt.observedAt).toBeNull();expect(receipt.summary.sourceAuditRequested).toBe(false);expect(receipt.summary.sourceCheckCount).toBe(0);
 });
