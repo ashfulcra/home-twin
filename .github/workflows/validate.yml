@@ -18,6 +18,11 @@ jobs:
       - run: npm ci
       - name: Configure public build defaults
         run: cp .env.example .env
+      - name: Install native file processing dependencies
+        run: |
+          python3 -m venv /tmp/home-twin-chat-python
+          /tmp/home-twin-chat-python/bin/python -m pip install -r scripts/requirements-chat-files.txt
+          echo "/tmp/home-twin-chat-python/bin" >> "$GITHUB_PATH"
       - run: npm test
       - run: npm run check
       - run: npm run build
