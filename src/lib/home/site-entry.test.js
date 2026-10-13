@@ -1,5 +1,19 @@
 import { test, expect } from 'vitest';
-import { homeSiteEntry } from './site-entry.js';
+import { homeSiteEntry, householdReturnUrl, confirmedSetupDestination } from './site-entry.js';
+test('confirmed onboarding returns to the household entry and never redirects an uncertain save', () => {
+  const guide = householdReturnUrl({ HOME_SITE_MODE: 'guide' }),
+    ordinary = householdReturnUrl({});
+  expect(confirmedSetupDestination({ status: 'ready', homeId: 'example-home' }, guide)).toBe(
+    '/home'
+  );
+  expect(confirmedSetupDestination({ status: 'ready', homeId: 'example-home' }, ordinary)).toBe(
+    '/'
+  );
+  expect(
+    confirmedSetupDestination({ status: 'pending-readback', homeId: 'example-home' }, guide)
+  ).toBeNull();
+  expect(() => confirmedSetupDestination({}, guide)).toThrow(/confirm/i);
+});
 const named = {
   HOME_MODE: 'existing',
   HOME_ID: 'example-home',

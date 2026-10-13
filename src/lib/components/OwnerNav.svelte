@@ -1,5 +1,6 @@
 <script lang="ts">
   import { user } from '$lib/user';
+  import { page } from '$app/state';
 
   // The owner's id lives server-side only; ask the backend whether we're the
   // owner (re-checking whenever auth state changes) instead of comparing ids.
@@ -24,26 +25,21 @@
 </script>
 
 {#if isOwner}
-  <nav class="bg-fulcra-black/50 border-b border-fulcra-gray/20">
-    <div class="max-w-7xl mx-auto px-4 py-3">
+  <nav class="border-b border-fulcra-gray/20 bg-fulcra-black/50">
+    <div class="mx-auto max-w-7xl px-4 py-3">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-4">
           <a
-            href="/"
-            class="text-fulcra-teal hover:text-fulcra-teal/80 font-medium"
+            href={page.data.householdUrl ?? '/'}
+            class="font-medium text-fulcra-teal hover:text-fulcra-teal/80"
           >
             Home
           </a>
-          <a
-            href="/harness"
-            class="text-fulcra-teal hover:text-fulcra-teal/80 font-medium"
-          >
+          <a href="/harness" class="font-medium text-fulcra-teal hover:text-fulcra-teal/80">
             Harness Dashboard
           </a>
         </div>
-        <div class="text-fulcra-gray text-sm">
-          Owner
-        </div>
+        <div class="text-sm text-fulcra-gray">Owner</div>
       </div>
     </div>
   </nav>

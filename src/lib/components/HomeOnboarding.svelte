@@ -1,14 +1,227 @@
 <script lang="ts">
- let step=$state(1);let name=$state('');let timezone=$state(Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC');let selected: string[]=$state([]);let equipmentNames=$state('');let rooms=$state('');let mode=$state('self');let message=$state('');let saving=$state(false);let pending: any=$state(null);
- const systems=['Heating and cooling','Plumbing','Electrical','Roof and exterior','Appliances','Safety and security','Network and smart home','Garden and grounds','Vehicles and tools'];
- async function save(){pending??={id:'home-'+crypto.randomUUID(),name,timezone,systems:selected,equipmentNames,rooms};saving=true;message='';try{const response=await fetch('/api/home/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pending)});const result=await response.json();if(!response.ok){if(response.status===400)pending=null;throw new Error(result.message??'Setup could not be confirmed. Retry these same answers.');}if(result.status==='pending-readback'){message='Your answers were submitted. Retry to confirm the same home.';}else{if(mode==='agent'){const request=await fetch('/api/home/agent-request',{method:'POST'});if(!request.ok){message='Home saved. Agent request could not be confirmed; open Household to retry.';return;}}window.location.href='/';}}catch(e){message=e instanceof Error?e.message:String(e);}finally{saving=false;}}
+  import { confirmedSetupDestination } from '$lib/home/site-entry.js';
+  let { householdUrl = '/' } = $props<{ householdUrl?: string }>();
+  let step = $state(1);
+  let name = $state('');
+  let timezone = $state(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+  let selected: string[] = $state([]);
+  let equipmentNames = $state('');
+  let rooms = $state('');
+  let mode = $state('self');
+  let message = $state('');
+  let saving = $state(false);
+  let pending: any = $state(null);
+  const systems = [
+    'Heating and cooling',
+    'Plumbing',
+    'Electrical',
+    'Roof and exterior',
+    'Appliances',
+    'Safety and security',
+    'Network and smart home',
+    'Garden and grounds',
+    'Vehicles and tools'
+  ];
+  async function save() {
+    pending ??= {
+      id: 'home-' + crypto.randomUUID(),
+      name,
+      timezone,
+      systems: selected,
+      equipmentNames,
+      rooms
+    };
+    saving = true;
+    message = '';
+    try {
+      const response = await fetch('/api/home/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pending)
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        if (response.status === 400) pending = null;
+        throw new Error(
+          result.message ?? 'Setup could not be confirmed. Retry these same answers.'
+        );
+      }
+      const destination = confirmedSetupDestination(result, householdUrl);
+      if (!destination) {
+        message = 'Your answers were submitted. Retry to confirm the same home.';
+      } else {
+        if (mode === 'agent') {
+          const request = await fetch('/api/home/agent-request', { method: 'POST' });
+          if (!request.ok) {
+            message = 'Home saved. Agent request could not be confirmed; open Household to retry.';
+            return;
+          }
+        }
+        window.location.href = destination;
+      }
+    } catch (e) {
+      message = e instanceof Error ? e.message : String(e);
+    } finally {
+      saving = false;
+    }
+  }
 </script>
-<main><a href="/">← Home</a><p class="eyebrow">A useful home starts with what you know</p><h1>Meet your home</h1><p>Step {step} of 3. Skip unknown details. A floor plan and exact measurements can come later.</p>
-<form onsubmit={(event)=>{event.preventDefault();if(step<3)step+=1;else save();}}>
- <fieldset disabled={saving||!!pending}>
- {#if step===1}<h2>The basics</h2><label>What do you call your home? <input bind:value={name} required maxlength="120" placeholder="Our home" /></label><label>Time zone <input bind:value={timezone} required /></label><label>Rooms you already know (optional) <textarea bind:value={rooms} placeholder="Kitchen&#10;Living room&#10;Bedroom"></textarea></label>
- {:else if step===2}<h2>What does your home need to care for?</h2><p>Select the systems you know about. This creates placeholders for details, not maintenance schedules.</p><div class="systems">{#each systems as system}<label class="check"><input type="checkbox" bind:group={selected} value={system} />{system}</label>{/each}</div><label>Specific equipment or other things to maintain (optional) <textarea bind:value={equipmentNames} placeholder="Furnace&#10;Dishwasher&#10;Trash bins"></textarea></label>
- {:else}<h2>How would you like to get started?</h2><label class="check"><input type="radio" bind:group={mode} value="self" />Use the dashboard first</label><label class="check"><input type="radio" bind:group={mode} value="agent" />Save a request to connect a home agent through Fulcra</label><p>Your home will start with {selected.length} system placeholders. Service dates, providers and intervals stay unknown until you supply evidence.</p>{#if mode==='agent'}<p>After saving, connect your preferred agent to this Fulcra account and give it your home ID. The request is stored for the agent to read; saving it does not connect or launch an agent.</p>{/if}<p>Existing homes and original files are preserved. This creates a separate private home.</p>{/if}
- </fieldset><div class="actions">{#if step>1&&!pending}<button type="button" onclick={()=>step-=1}>Back</button>{/if}<button disabled={saving} type="submit">{saving?'Saving…':pending?'Retry same home':step===3?'Create my home':'Continue'}</button></div>
-</form><p role="status">{message}</p></main>
-<style>main{font-family:system-ui;max-width:760px;margin:auto;padding:40px 24px;min-height:100vh;color:#203c32}h1{font-size:38px;margin:16px 0}h2{font-size:25px}.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#387367;margin-top:32px}p{line-height:1.6}label{display:block;margin:20px 0}input,textarea{display:block;padding:12px;margin-top:8px;border:1px solid #becfc5;border-radius:8px;width:90%;background:white;color:#203c32}textarea{min-height:100px}.check{display:flex;align-items:center;gap:12px;margin:14px 0}.check input{width:auto;margin:0}.systems{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}fieldset{border:0;padding:0}.actions{display:flex;gap:12px;margin-top:24px}button{padding:12px 18px;border:1px solid #cadbd1;border-radius:8px;background:#e0f0e6;color:#203c32;cursor:pointer}a{color:#216c58}</style>
+
+<main>
+  <a href={householdUrl}>← Home</a>
+  <p class="eyebrow">A useful home starts with what you know</p>
+  <h1>Meet your home</h1>
+  <p>Step {step} of 3. Skip unknown details. A floor plan and exact measurements can come later.</p>
+  <form
+    onsubmit={(event) => {
+      event.preventDefault();
+      if (step < 3) step += 1;
+      else save();
+    }}
+  >
+    <fieldset disabled={saving || !!pending}>
+      {#if step === 1}<h2>The basics</h2>
+        <label
+          >What do you call your home? <input
+            bind:value={name}
+            required
+            maxlength="120"
+            placeholder="Our home"
+          /></label
+        ><label>Time zone <input bind:value={timezone} required /></label><label
+          >Rooms you already know (optional) <textarea
+            bind:value={rooms}
+            placeholder="Kitchen&#10;Living room&#10;Bedroom"
+          ></textarea></label
+        >
+      {:else if step === 2}<h2>What does your home need to care for?</h2>
+        <p>
+          Select the systems you know about. This creates placeholders for details, not maintenance
+          schedules.
+        </p>
+        <div class="systems">
+          {#each systems as system}<label class="check"
+              ><input type="checkbox" bind:group={selected} value={system} />{system}</label
+            >{/each}
+        </div>
+        <label
+          >Specific equipment or other things to maintain (optional) <textarea
+            bind:value={equipmentNames}
+            placeholder="Furnace&#10;Dishwasher&#10;Trash bins"
+          ></textarea></label
+        >
+      {:else}<h2>How would you like to get started?</h2>
+        <label class="check"
+          ><input type="radio" bind:group={mode} value="self" />Use the dashboard first</label
+        ><label class="check"
+          ><input type="radio" bind:group={mode} value="agent" />Save a request to connect a home
+          agent through Fulcra</label
+        >
+        <p>
+          Your home will start with {selected.length} system placeholders. Service dates, providers and
+          intervals stay unknown until you supply evidence.
+        </p>
+        {#if mode === 'agent'}<p>
+            After saving, connect your preferred agent to this Fulcra account and give it your home
+            ID. The request is stored for the agent to read; saving it does not connect or launch an
+            agent.
+          </p>{/if}
+        <p>
+          Existing homes and original files are preserved. This creates a separate private home.
+        </p>{/if}
+    </fieldset>
+    <div class="actions">
+      {#if step > 1 && !pending}<button type="button" onclick={() => (step -= 1)}>Back</button
+        >{/if}<button disabled={saving} type="submit"
+        >{saving
+          ? 'Saving…'
+          : pending
+            ? 'Retry same home'
+            : step === 3
+              ? 'Create my home'
+              : 'Continue'}</button
+      >
+    </div>
+  </form>
+  <p role="status">{message}</p>
+</main>
+
+<style>
+  main {
+    font-family: system-ui;
+    max-width: 760px;
+    margin: auto;
+    padding: 40px 24px;
+    min-height: 100vh;
+    color: #203c32;
+  }
+  h1 {
+    font-size: 38px;
+    margin: 16px 0;
+  }
+  h2 {
+    font-size: 25px;
+  }
+  .eyebrow {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #387367;
+    margin-top: 32px;
+  }
+  p {
+    line-height: 1.6;
+  }
+  label {
+    display: block;
+    margin: 20px 0;
+  }
+  input,
+  textarea {
+    display: block;
+    padding: 12px;
+    margin-top: 8px;
+    border: 1px solid #becfc5;
+    border-radius: 8px;
+    width: 90%;
+    background: white;
+    color: #203c32;
+  }
+  textarea {
+    min-height: 100px;
+  }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 14px 0;
+  }
+  .check input {
+    width: auto;
+    margin: 0;
+  }
+  .systems {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+  fieldset {
+    border: 0;
+    padding: 0;
+  }
+  .actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+  }
+  button {
+    padding: 12px 18px;
+    border: 1px solid #cadbd1;
+    border-radius: 8px;
+    background: #e0f0e6;
+    color: #203c32;
+    cursor: pointer;
+  }
+  a {
+    color: #216c58;
+  }
+</style>
