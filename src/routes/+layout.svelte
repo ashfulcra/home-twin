@@ -9,8 +9,8 @@
 
 {#key page.url.pathname}
   <div class="flex h-full min-h-screen w-full flex-col p-3" in:blur>
-    <OwnerNav />
-{@render children()}
+    {#if page.data.siteMode !== 'guide'}<OwnerNav />{/if}
+    {@render children()}
   </div>
 {/key}
 

@@ -6,6 +6,8 @@ The UI supports private [source-file intake](docs/source-intake.md), guided setu
 
 Use [independent instances](docs/independent-instances.md) to create separate homes with their own deployment, private workspace and branding. Source-derived multi-floor polygon drafts can retain blueprint provenance without being reduced to rectangular room extents.
 
+The public [Home Twin guide](https://home-twin.my.fulcra.ai/) explains how to give the skill to an agent and create a twin in your own Fulcra account. Its copyable prompt links to the full skill and matching runtime. Set `HOME_SITE_MODE=guide` for this public entry page; `/home` retains the authenticated household interface. Ordinary home deployments keep their existing root login/dashboard when the setting is omitted.
+
 ## Run locally
 
 Use a Node version supported by the deployment platform (20, 22 or 24). Copy `.env.example` to `.env`, retain the official Fulcra authentication settings, then:
