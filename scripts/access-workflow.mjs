@@ -1,4 +1,5 @@
-import {assertAccessWritersConfirmed} from './access-guards.mjs';
+import {assertAccessWritersConfirmed,readPrivateWriterState} from './access-guards.mjs';
+import {assertConfirmedAdmissionState} from './admission-journal.mjs';
 import {readJoinOutcome} from './join-outcome.mjs';
 import {join} from 'node:path';import {createHash} from 'node:crypto';
 import {createAdmissionClient} from './admission-client.mjs';import {applyWebAdmission} from './web-admission.mjs';import {runAutomaticJoin} from './automatic-join.mjs';import {accessFulcraClient,automaticJoinTransport} from './access-fulcra-client.mjs';
@@ -24,6 +25,25 @@ export async function runAccessWorkflow(config,input,options={}){
  const code=input.reviewCode;if(typeof code!=='string'||!decisionRE.test(code))throw Error('Exact review code required');
  const raw=await client.file(target.root+'/join-decisions/'+code+'.json',undefined,8192);if(!raw||hash(raw.text)!==code.slice(-64))throw Error('Exact owner decision unavailable');
  const review=JSON.parse(raw.text);if(review.id!==code.slice(0,36)||review.authorUserId!==userId||review.ownerUserId!==userId||review.homeId!==target.homeId||await joinIntentID(review)!==review.id)throw Error('Owner decision identity differs');
+ // An older browser decision must never reapply its superseded role. Verify
+ // the newer immutable, confirmed admission for this exact recipient read-only.
+ if(review.decision==='approve'){
+  const confirmed=await accessLock(target.stateDirectory,async()=>{
+   const pointer=readPrivateWriterState(join(target.stateDirectory,'admission.json'));
+   if(!pointer||pointer.status!=='confirmed')return null;
+   const saved=readPrivateWriterState(join(target.stateDirectory,'admissions',pointer.intentId+'.json'));
+   assertConfirmedAdmissionState(pointer,saved);
+   if(saved.packet.recipientUserId!==review.recipientUserId||saved.packet.reviewId===review.id||saved.packet.baseline.revision<=review.homeRevision)return null;
+   assertAccessWritersConfirmed(target.stateDirectory,target);
+   if(saved.homeId!==target.homeId||saved.principalId!==userId||saved.root!==target.root)throw Error('Current admission scope differs');
+   const home=await client.file(target.root+'/home.json'),publication=await client.file(saved.packet.publicationPath);
+   if(home?.text!==saved.targetText||publication?.text!==JSON.stringify(saved.packet.publication))throw Error('Completed admission contents changed; inspect current access');
+   const grant=exactAdmissionShare(await client.listShares(),saved.packet.shareBody);
+   if(!grant||grant!==pointer.result?.datashareId)throw Error('Completed admission share changed; inspect current access');
+   return {...pointer.result,approvedRole:saved.packet.role,supersededSavedDecision:true};
+  });
+  if(confirmed)return confirmed;
+ }
  const source=parseJoinCode(review.homeId+':'+review.recipientUserId+':'+review.requestId+':'+review.requestDigest,target);
  const original=await client.file(source.path,source.userId,8192);if(!original||hash(original.text)!==source.digest)throw Error('Current exact applicant request unavailable');
  const request=validateSharedJoinRequest(JSON.parse(original.text),source,target);if(await joinIntentID(request)!==request.id||JSON.stringify(request)!==original.text)throw Error('Applicant request identity differs');
