@@ -44,6 +44,10 @@ export function reconcileContributions(baseline, contributions) {
   if(c.kind==='fact'&&c.baseRevision!==undefined&&c.baseRevision!==home.revision){hold(c,'stale-base-revision');continue;}
   if(c.kind==='geometry'){hold(c,'major-model-change');continue;}
   if(c.kind==='evidence-upload'){hold(c,'source-upload-pending');continue;}
+  if(c.kind!=='note'&&c.sourceIds!==undefined){
+   if(!validNoteSources(c.sourceIds)){hold(c,'invalid-source-references');continue;}
+   if(c.sourceIds.some((/** @type {string} */ id)=>(home.sources??[]).filter((/** @type {any} */ source)=>source?.id===id).length!==1)){hold(c,'unknown-source-reference');continue;}
+  }
   if(c.kind==='evidence'){
    if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.id)||!validAttachment(c.attachment)||typeof c.value!=='string'||!c.value.trim()||c.value.length>500||!Number.isFinite(Date.parse(c.recordedAt))||Date.parse(c.recordedAt)>Date.now()){hold(c,'invalid-source-evidence');continue;}
    const sourceId=`evidence-${c.id}`;home.sources??=[];
@@ -63,7 +67,7 @@ export function reconcileContributions(baseline, contributions) {
    if(conflict || (entity[c.field]!=null&&entity[c.field]!==c.value)){hold(c,'contradiction');continue;}
    entity[c.field]=c.value;
    entity.fieldEvidence??={};entity.fieldEvidence[c.field]??=[];
-   if(!entity.fieldEvidence[c.field].some((/** @type {any} */ e)=>e.contributionId===c.id))entity.fieldEvidence[c.field].push({contributionId:c.id,authorUserId:c.authorUserId,recordedAt:c.recordedAt??null,value:c.value});
+   if(!entity.fieldEvidence[c.field].some((/** @type {any} */ e)=>e.contributionId===c.id))entity.fieldEvidence[c.field].push({contributionId:c.id,authorUserId:c.authorUserId,recordedAt:c.recordedAt??null,value:c.value,...(c.sourceIds?{sourceIds:[...c.sourceIds]}:{})});
   }else if(c.kind==='contact'){
    if(!c.value||!c.field){hold(c,'invalid-contact');continue;}
    if(!home.contacts.some((/** @type {any} */ contact)=>contact.id===c.id))home.contacts.push({id:c.id,name:c.value,trade:c.field,phone:c.phone??null,email:c.email??null,summary:c.text??'',contributionId:c.id,authorUserId:c.authorUserId,recordedAt:c.recordedAt});
@@ -99,7 +103,7 @@ export function validateContribution(input) {
   if(input[field]!==undefined){if(typeof input[field]!=='string'||input[field].length>(field==='text'?10000:500))throw new Error('Contribution is too long or invalid');result[field]=input[field].trim();}
  }
  if(['note','geometry','maintenance','task-completion'].includes(input.kind)&&!result.text)throw new Error('Add a description');
- if(input.sourceIds!==undefined){if(input.kind!=='note'||!validNoteSources(input.sourceIds))throw new Error('Choose up to 100 distinct source IDs for a note; paths and URLs are not source IDs');result.sourceIds=[...input.sourceIds];}
+ if(input.sourceIds!==undefined){if(!['note','fact','contact','maintenance','schedule','task-completion'].includes(input.kind)||!validNoteSources(input.sourceIds))throw new Error('Choose up to 100 distinct home source IDs; paths and URLs are not source IDs');result.sourceIds=[...input.sourceIds];}
  if(input.kind==='fact'&&(!result.entityId||!['model','manufacturer','serial','capacity','installedAt'].includes(result.field)||!result.value))throw new Error('Choose equipment and a supported fact');
  if(['maintenance','task-completion'].includes(input.kind)&&(!Number.isFinite(Date.parse(result.performedAt))||Date.parse(result.performedAt)>Date.now()))throw new Error('Enter the actual past service date');
  if(input.kind==='contact'&&(!result.value||!result.field))throw new Error('Add provider name and trade');

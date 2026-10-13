@@ -11,19 +11,26 @@ export function createMaintainerClient(homeId,options={}){
  if(!/^[a-z0-9][a-z0-9-]{0,79}$/.test(homeId))throw new Error('Invalid home ID');
  const root=options.root??`/shared/home-twin/${homeId}`;
  if(!validHomeRoot(homeId,root))throw Error('Invalid home root');
- const endpoint='https://api.fulcradynamics.com/';
  const token=execFileSync('fulcra',['auth','print-access-token'],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
- async function get(/** @type {string} */ path){const r=await fetch(endpoint+path,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(15000)});if(!r.ok)throw new Error(`Fulcra read status ${r.status}`);return r;}
+ return createCallerMaintainerClient(homeId,options,token);
+}
+/** Server writes require the actual current caller. This adapter has no CLI authentication fallback.
+ * @param {string} homeId @param {{root?:string,checkSources?:boolean}} options @param {string} token @param {typeof fetch} [send] */
+export function createCallerMaintainerClient(homeId,options,token,send=fetch){
+ if(typeof token!=='string'||token.length<8||token.length>16384)throw Error('Current caller token required');
+ const root=options.root??`/shared/home-twin/${homeId}`;if(!/^[a-z0-9][a-z0-9-]{0,79}$/.test(homeId)||!validHomeRoot(homeId,root))throw Error('Intended home scope required');
+ const endpoint='https://api.fulcradynamics.com/';
+ async function get(/** @type {string} */ path){const r=await send(endpoint+path,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(15000)});if(!r.ok)throw new Error(`Fulcra read status ${r.status}`);return r;}
  return {read:()=>readMaintainerHome(homeId,root,get,options),
   readSnapshot:async (/** @type {string} */ path)=>{if(!path.startsWith(root+'/history/'))throw Error('Only intended home history may be inspected');const split=path.lastIndexOf('/');const listing=await(await get(`input/v1/file_upload?path=${encodeURIComponent(path.slice(0,split))}`)).json();const file=listing.files?.find((/** @type {any} */ f)=>f.name===path.slice(split+1));return file?await(await get(`input/v1/file_upload/${encodeURIComponent(file.id)}/download`)).json():null;},
   write:async (/** @type {string} */ path,/** @type {any} */ value,/** @type {(()=>Promise<void>)|undefined} */ beforeCommit=undefined)=>{
    if(path!==root+'/home.json'&&!new RegExp('^'+root+'/history/[a-f0-9]{64}\\.json$').test(path))throw Error('Only intended home snapshot/history may be written');
    const split=path.lastIndexOf('/');const bytes=new TextEncoder().encode(JSON.stringify(value));
-   const r=await fetch(endpoint+'input/v1/file_upload',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({path:path.slice(0,split),name:path.slice(split+1),content_type:'application/json',content_length:bytes.byteLength}),signal:AbortSignal.timeout(15000)});
+   const r=await send(endpoint+'input/v1/file_upload',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({path:path.slice(0,split),name:path.slice(split+1),content_type:'application/json',content_length:bytes.byteLength}),signal:AbortSignal.timeout(15000)});
    if(!r.ok)throw Error(`Fulcra upload preparation status ${r.status}`);const upload=await r.json();
    const url=new URL(upload.url);if(url.protocol!=='https:')throw Error('Invalid secure upload URL');
    if(beforeCommit)await beforeCommit();
-   const sent=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','Content-Length':String(bytes.byteLength)},body:bytes,signal:AbortSignal.timeout(15000)});if(!sent.ok)throw Error(`Fulcra upload status ${sent.status}`);
+   const sent=await send(url,{method:'POST',headers:{'Content-Type':'application/json','Content-Length':String(bytes.byteLength)},body:bytes,signal:AbortSignal.timeout(15000)});if(!sent.ok)throw Error(`Fulcra upload status ${sent.status}`);
   }};
 }
 /** Read only the intended home through current caller permissions.

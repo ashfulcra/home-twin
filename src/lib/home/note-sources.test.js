@@ -44,9 +44,9 @@ test('colliding or foreign source contributions cannot make an unknown note refe
  const collided=reconcileContributions(home,[row,evidence,{...evidence,value:'Other original'}]);expect(collided.accepted).toEqual([]);expect(collided.home.notes).toEqual([]);expect(collided.review.find(r=>r.contribution.id===id)?.reason).toBe('unknown-note-source');
  const foreign=reconcileContributions(home,[row,{...evidence,homeId:'foreign-home'}]);expect(foreign.accepted).toEqual([]);expect(foreign.review).toEqual([{contribution:row,reason:'unknown-note-source'}]);
 });
-test('legacy no-reference payload stays exact and references are restricted to notes',()=>{
+test('legacy no-reference payload stays exact and geometry references remain separately reviewed',()=>{
  const legacy={id,homeId:'example',kind:'note',text:'Legacy note'};expect(validateContribution(legacy)).toEqual(legacy);
- expect(()=>validateContribution({...note,kind:'fact',field:'model',value:'Example model'})).toThrow();
+ expect(()=>validateContribution({...note,kind:'geometry'})).toThrow();
 });
 test('editing a candidate note cannot mutate its original source attribution or retained evidence',()=>{
  const original=stampNote(note);const before=JSON.stringify(original);const result=reconcileContributions(home,[original]);
