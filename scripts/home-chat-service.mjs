@@ -8,6 +8,9 @@ import { persistentChatJournal } from './chat-journal.mjs';
 import { runChatTurn } from './chat-runtime.mjs';
 import { loadHouseModels } from './chat-model-settings.mjs';
 import { createChatHomeTools } from './chat-home-tools.mjs';
+import { createChatUploads } from './chat-uploads.mjs';
+import { chatFileClient } from './chat-file-client.mjs';
+import { processChatFile } from './chat-file-processing.mjs';
 import { accessFulcraClient } from './access-fulcra-client.mjs';
 import { homeRole } from '../src/lib/home/access.js';
 import { validateChatScope, validateChatTurn } from '../src/lib/home/chat-contract.js';
@@ -18,7 +21,8 @@ export async function createChatWorker({
   model,
   modelFor,
   readSource,
-  archive
+  archive,
+  uploads
 }) {
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const root = await lstat(directory);
@@ -81,7 +85,24 @@ export async function createChatWorker({
       const access = await bind(request),
         scope = access.scope;
       const selectedModel = modelFor ? modelFor(scope.homeId) : model;
-      if (request.action === 'status') return { available: !!selectedModel };
+      if (request.action === 'status')
+        return {
+          available: !!selectedModel,
+          ...(uploads ? { uploads: ['maintainer', 'contributor'].includes(scope.role) } : {})
+        };
+      if (request.action === 'file') {
+        if (
+          !uploads ||
+          !request.input ||
+          Object.keys(request.input).length !== 2 ||
+          !['prepare', 'status', 'chunk', 'finish'].includes(request.input.operation)
+        )
+          throw Error('File operation unavailable');
+        return uploads[request.input.operation](request.input.value, {
+          token: request.token,
+          homeId: scope.homeId
+        });
+      }
       const journal = await journalFor(scope);
       if (request.action === 'turn') {
         if (!selectedModel) throw Error('Model is not configured');
@@ -114,7 +135,44 @@ export async function createChatWorker({
             root: fresh.scope.root
           };
         };
-        const tools = createChatHomeTools({ authorize: reauthorize, readSource });
+        const tools = createChatHomeTools({
+          authorize: reauthorize,
+          readSource,
+          uploadedSource: uploads
+            ? async (
+                /** @type {string} */ id,
+                /** @type {any} */ access,
+                /** @type {number[]} */ pages
+              ) => {
+                const original = await uploads.source(id, {
+                  token: request.token,
+                  homeId: scope.homeId
+                });
+                if (!original) return null;
+                const value = {
+                  id,
+                  title: original.source.title,
+                  sha256: original.source.attachment.sha256,
+                  originalAvailable: true
+                };
+                if (original.source.attachment.mimeType === 'text/plain')
+                  return {
+                    ...value,
+                    text: new TextDecoder('utf-8', { fatal: true })
+                      .decode(original.bytes)
+                      .slice(0, 16000)
+                  };
+                return {
+                  ...value,
+                  ...(await processChatFile(
+                    original.bytes,
+                    original.source.attachment.mimeType,
+                    pages
+                  ))
+                };
+              }
+            : undefined
+        });
         const job = /** @type {any} */ ({ input, turnId: input.turnId, controller, promise: null });
         active.set(key, job);
         job.admission = journal.createTurn(input);
@@ -261,7 +319,7 @@ export async function startChatService(config) {
         text = '';
       for await (const chunk of req) {
         count += chunk.length;
-        if (count > 32000) throw Error('Request limit');
+        if (count > 4 * 1024 * 1024 + 32768) throw Error('Request limit');
         text += chunk.toString();
       }
       send(200, await worker.dispatch(JSON.parse(text)));
@@ -277,12 +335,19 @@ export async function startChatService(config) {
   });
   try {
     const archive = await chatTranscriptArchive(join(config.directory, 'archives'));
+    const uploads = await createChatUploads({
+      directory: join(config.directory, 'uploads'),
+      authorize,
+      ioFor: (/** @type {any} */ current) => chatFileClient(current.token, current.scope),
+      secretsFor: (/** @type {any} */ scope) => models.get(scope.homeId)?.secrets ?? []
+    });
     worker = await createChatWorker({
       directory: join(config.directory, 'runs'),
       authorize,
       modelFor: (/** @type {string} */ homeId) => models.get(homeId),
       readSource: chatSourceReader(),
-      archive
+      archive,
+      uploads
     });
   } catch (e) {
     server.close();

@@ -30,6 +30,33 @@ const setup = async () => ({
     }
   }
 });
+test('attached page images reach the model without entering durable events', async () => {
+  const x = await setup();
+  x.input = { ...input, attachmentIds: ['source-1'] };
+  let seen = /** @type {any[]} */ ([]);
+  x.tools.execute = async () => ({
+    id: 'source-1',
+    text: 'Synthetic plan',
+    media: [
+      { mimeType: 'image/jpeg', data: Buffer.from([255, 216, 255]).toString('base64'), page: 1 }
+    ]
+  });
+  x.model = {
+    async *stream(/** @type {any[]} */ context) {
+      seen = context;
+      yield { type: 'text', text: 'A plan.' };
+    }
+  };
+  await runChatTurn(x);
+  expect(
+    seen.some(
+      (item) =>
+        Array.isArray(item.content) &&
+        item.content.some((/** @type {any} */ b) => b.type === 'image')
+    )
+  ).toBe(true);
+  expect(JSON.stringify(await x.journal.readEvents(input.conversationId))).not.toContain('/9j/');
+});
 test('streamed reply is durable and same turn retry never invokes model twice', async () => {
   const x = await setup();
   let calls = 0;

@@ -5,18 +5,29 @@ import { createHash, randomUUID } from 'node:crypto';
 import { accessFulcraClient } from './access-fulcra-client.mjs';
 import { validateChatScope } from '../src/lib/home/chat-contract.js';
 import { sourceLocation } from '../src/lib/server/source-location.js';
+import { processChatFile } from './chat-file-processing.mjs';
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 /** Read only an existing source from fresh current home evidence. @param {any} [clientFor] */
 export function chatSourceReader(clientFor = accessFulcraClient) {
-  return async (/** @type {any} */ source, /** @type {any} */ access) => {
+  return async (
+    /** @type {any} */ source,
+    /** @type {any} */ access,
+    /** @type {number[]} */ pages = []
+  ) => {
     const location = sourceLocation(access, source),
       attachment = source.attachment;
+    if (
+      !location.path.startsWith(access.root + '/') ||
+      location.path.includes('\\') ||
+      location.path.split('/').some((/** @type {string} */ s) => s === '.' || s === '..')
+    )
+      throw Error('Source outside this home scope');
     const mime =
       attachment?.mimeType ??
       source.mimeType ??
       (/\.(txt|md|json|csv)$/i.test(location.path) ? 'text/plain' : null);
     const expected = attachment?.sha256 ?? source.sha256;
-    if (mime !== 'text/plain')
+    if (!['text/plain', 'application/pdf', 'image/png', 'image/jpeg', 'image/webp'].includes(mime))
       return {
         id: source.id,
         title: source.title,
@@ -30,10 +41,22 @@ export function chatSourceReader(clientFor = accessFulcraClient) {
         originalAvailable: false,
         note: 'Accepted original checksum is unavailable; keep this source for review.'
       };
-    const file = await clientFor(access.token).fileBytes(location.path, location.userId, 262144);
+    const file = await clientFor(access.token).fileBytes(
+      location.path,
+      location.userId,
+      200 * 1024 * 1024
+    );
     if (!file) throw Error('Original source unavailable');
     if (createHash('sha256').update(file.bytes).digest('hex') !== expected)
       throw Error('Original source checksum differs; source review required');
+    if (mime !== 'text/plain')
+      return {
+        id: source.id,
+        title: source.title,
+        sha256: expected,
+        originalAvailable: true,
+        ...(await processChatFile(file.bytes, mime, pages))
+      };
     const text = new TextDecoder('utf-8', { fatal: true }).decode(file.bytes);
     if (text.includes('\0')) throw Error('Source is not text');
     // Bounded extracted text is evidence; the accepted original checksum is retained.

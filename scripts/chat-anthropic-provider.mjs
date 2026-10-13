@@ -24,6 +24,16 @@ export function nativeAnthropicProvider(config, send = fetch) {
       for (const item of context) {
         if (['user', 'assistant'].includes(item.role) && typeof item.content === 'string')
           append(item.role, { type: 'text', text: item.content });
+        else if (item.role === 'user' && Array.isArray(item.content))
+          for (const block of item.content) {
+            if (block.type === 'text') append('user', { type: 'text', text: block.text });
+            else if (block.type === 'image')
+              append('user', {
+                type: 'image',
+                source: { type: 'base64', media_type: block.mimeType, data: block.data }
+              });
+            else throw Error('Unsupported evidence block');
+          }
         else if (item.type === 'function_call')
           append('assistant', {
             type: 'tool_use',

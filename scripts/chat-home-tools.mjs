@@ -2,6 +2,19 @@ import { searchHomeKnowledge } from '../src/lib/home/knowledge-search.js';
 const definitions = [
   ['read_home', 'Read current home overview', {}],
   [
+    'read_source_pages',
+    'Read up to four numbered pages from a home PDF',
+    {
+      sourceId: { type: 'string', maxLength: 200 },
+      pages: {
+        type: 'array',
+        items: { type: 'integer', minimum: 1, maximum: 600 },
+        minItems: 1,
+        maxItems: 4
+      }
+    }
+  ],
+  [
     'search_records',
     'Find current equipment, care, contacts, notes and history',
     { query: { type: 'string', maxLength: 120 } }
@@ -29,7 +42,7 @@ const definitions = [
   }
 }));
 /** Fresh current caller authority is injected; arbitrary paths and commands are absent. @param {any} options */
-export function createChatHomeTools({ authorize, readSource }) {
+export function createChatHomeTools({ authorize, readSource, uploadedSource }) {
   return {
     definitions /** @param {string} name @param {any} args */,
     async execute(/** @type {string} */ name, /** @type {any} */ args) {
@@ -47,8 +60,15 @@ export function createChatHomeTools({ authorize, readSource }) {
       if (
         (name === 'search_records' &&
           (typeof args.query !== 'string' || args.query.length > 120)) ||
-        (name === 'read_source' &&
+        (['read_source', 'read_source_pages'].includes(name) &&
           (typeof args.sourceId !== 'string' || args.sourceId.length > 200)) ||
+        (name === 'read_source_pages' &&
+          (!Array.isArray(args.pages) ||
+            args.pages.length < 1 ||
+            args.pages.length > 4 ||
+            args.pages.some(
+              (/** @type {number} */ p) => !Number.isSafeInteger(p) || p < 1 || p > 600
+            ))) ||
         (name === 'read_model_region' &&
           (!Array.isArray(args.ids) ||
             args.ids.length > 12 ||
@@ -75,10 +95,14 @@ export function createChatHomeTools({ authorize, readSource }) {
         };
       if (name === 'search_records')
         return { records: searchHomeKnowledge(home, args.query).slice(0, 20) };
-      if (name === 'read_source') {
+      if (['read_source', 'read_source_pages'].includes(name)) {
+        if (uploadedSource) {
+          const original = await uploadedSource(args.sourceId, access, args.pages ?? []);
+          if (original) return original;
+        }
         const source = home.sources?.find((/** @type {any} */ s) => s.id === args.sourceId);
         if (!source) throw Error('Source is not in current home');
-        return readSource(source, access);
+        return readSource(source, access, args.pages ?? []);
       }
       const model = home.reconstruction?.buildingModel;
       if (!model) throw Error('Home model unavailable');

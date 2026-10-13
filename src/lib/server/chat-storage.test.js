@@ -33,6 +33,30 @@ const record = {
   ],
   events: []
 };
+test('accepted metadata cannot authorize another vault folder', async () => {
+  let read = false;
+  const reader = chatSourceReader(() => ({
+    fileBytes: async () => {
+      read = true;
+      return null;
+    }
+  }));
+  await expect(
+    reader(
+      { id: 'foreign', title: 'Foreign', path: '/Other/private.txt', sha256: 'a'.repeat(64) },
+      {
+        scope,
+        root: scope.root,
+        home: { members: [] },
+        role: 'maintainer',
+        userId: scope.principalId,
+        ownerUserId: scope.ownerUserId,
+        token: 'caller-token'
+      }
+    )
+  ).rejects.toThrow(/scope|outside/i);
+  expect(read).toBe(false);
+});
 test('transcript writes once to the caller private folder with exact readback', async () => {
   const files = new Map();
   let writes = 0;

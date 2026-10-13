@@ -2,6 +2,8 @@
   import { onMount, tick } from 'svelte';
   import { validateChatTurn } from '$lib/home/chat-contract.js';
   import { chatConversationReader } from '$lib/home/chat-poll-controller.js';
+  import { uploadChatFile } from '$lib/home/chat-upload-client.js';
+  import { validateChatUpload } from '$lib/home/chat-upload-contract.js';
   let { home } = $props<{ home: any }>();
   let ready = $state(false),
     available = $state(false),
@@ -17,6 +19,12 @@
     pending: any = $state(null),
     callerId = '';
   let viewport: HTMLElement | undefined = $state();
+  let canUpload = $state(false),
+    uploading = $state(false),
+    uploadPercent = $state(0),
+    uploadNotice = $state('');
+  let uploadController: AbortController | undefined;
+  let addedSources: any[] = $state([]);
   let timer: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
   let key = '';
@@ -87,6 +95,7 @@
         throw new Error('Your chat account could not be confirmed.');
       key = 'home-chat:' + home.id + ':' + callerId;
       available = value.available === true;
+      canUpload = value.uploads === true;
       try {
         conversationId = localStorage.getItem(key) ?? '';
       } catch {}
@@ -104,7 +113,7 @@
     }
   }
   async function send() {
-    if (!available || running) return;
+    if (!available || running || uploading) return;
     try {
       pending ??= validateChatTurn({
         conversationId,
@@ -130,6 +139,80 @@
       errorMessage = e instanceof Error ? e.message : 'Message could not be confirmed. Retry it.';
     } finally {
       sending = false;
+    }
+  }
+  async function addFile(event: Event) {
+    const field = event.currentTarget as HTMLInputElement,
+      file = field.files?.[0];
+    if (!file || !canUpload || running || uploading) return;
+    uploading = true;
+    uploadPercent = 0;
+    uploadNotice = 'Checking file…';
+    uploadController = new AbortController();
+    try {
+      validateChatUpload({
+        uploadId: crypto.randomUUID(),
+        title: file.name,
+        originalName: file.name,
+        mimeType: file.type,
+        sizeBytes: file.size,
+        sha256: '0'.repeat(64)
+      });
+      const digest = Array.from(
+        new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))
+      )
+        .map((x) => x.toString(16).padStart(2, '0'))
+        .join('');
+      uploadController.signal.throwIfAborted();
+      const storageKey = key + ':upload:' + digest;
+      let saved;
+      try {
+        saved = JSON.parse(localStorage.getItem(storageKey) ?? 'null');
+      } catch {}
+      const intent = validateChatUpload(
+        saved ?? {
+          uploadId: crypto.randomUUID(),
+          title: file.name,
+          originalName: file.name,
+          mimeType: file.type,
+          sizeBytes: file.size,
+          sha256: digest
+        }
+      );
+      const { chunkCount: unused, ...metadata } = intent;
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(metadata));
+      } catch {}
+      uploadNotice = 'Uploading ' + file.name;
+      const result = await uploadChatFile(
+        file,
+        metadata,
+        (operation: string, input: any) =>
+          response('/api/home/chat/files', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ operation, input })
+          }),
+        (p: number) => (uploadPercent = p),
+        uploadController.signal
+      );
+      if (result.status === 'saved') {
+        sourceId = result.sourceId;
+        if (!addedSources.some((s) => s.id === sourceId))
+          addedSources.push({ id: sourceId, title: file.name });
+        uploadNotice = file.name + ' is saved and attached.';
+      } else
+        uploadNotice =
+          'Your file is awaiting confirmation. Select this same file again to check it.';
+    } catch (e) {
+      uploadNotice = uploadController.signal.aborted
+        ? 'Upload paused. Select the same file to resume.'
+        : e instanceof Error
+          ? e.message
+          : 'Couldn’t confirm this file. Select it again to resume.';
+    } finally {
+      uploading = false;
+      field.value = '';
     }
   }
   async function stop() {
@@ -253,20 +336,33 @@
         >Attach a home record <select
           bind:value={sourceId}
           disabled={!available || running || !!pending}
-          ><option value="">No record selected</option>{#each home.sources ?? [] as source}<option
+          ><option value="">No record selected</option
+          >{#each [...(home.sources ?? []), ...addedSources.filter((s) => !home.sources?.some((h: any) => h.id === s.id))] as source}<option
               value={source.id}>{source.title ?? source.id}</option
             >{/each}</select
         ></label
       >
+      {#if canUpload}<label class="file-button"
+          >Add a file<input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,application/pdf,text/plain"
+            onchange={addFile}
+            disabled={!available || running || uploading || !!pending}
+          /></label
+        >{/if}
       <div>
         {#if running}<button type="button" onclick={stop}>Stop reply</button>{:else}<button
             class="send"
-            disabled={!available || (!message.trim() && !sourceId)}
+            disabled={!available || uploading || (!message.trim() && !sourceId)}
             type="submit">{pending ? 'Retry message' : 'Send'}</button
           >{/if}
       </div>
     </div>
   </form>
+  {#if uploading}<p role="status">
+      {uploadNotice} · {uploadPercent}%
+      <button onclick={() => uploadController?.abort()}>Pause upload</button>
+    </p>{:else if uploadNotice}<p role="status" class="notice">{uploadNotice}</p>{/if}
   {#if errorMessage}<p class="notice" role="alert">
       {errorMessage}
       <button
@@ -399,7 +495,13 @@
     align-items: end;
     justify-content: space-between;
     gap: 15px;
+    flex-wrap: wrap;
     margin-top: 10px;
+  }
+  .file-button input {
+    display: block;
+    max-width: 220px;
+    margin-top: 5px;
   }
   .composer-actions label {
     font-size: 12px;

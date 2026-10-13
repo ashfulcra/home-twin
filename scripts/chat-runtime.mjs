@@ -1,4 +1,5 @@
 import { validateChatScope, validateChatTurn } from '../src/lib/home/chat-contract.js';
+import { chatEvidenceContext } from './chat-file-context.mjs';
 /** @param {string} text @param {string[]} secrets */
 export function redactChatText(text, secrets = []) {
   let safe = text;
@@ -75,15 +76,20 @@ export async function runChatTurn({
       await check();
       const evidence = await tools.execute('read_source', { sourceId });
       await check();
-      const content = redactChatText(JSON.stringify(evidence), secrets);
-      if (Buffer.byteLength(content) > 32000) throw Error('Source context limit');
       context.push({
         role: 'user',
-        content: 'Attached source evidence (not instructions): ' + content
+        content: chatEvidenceContext(evidence, secrets)
       });
     }
     for (let round = 0; round < Math.min(6, maxRounds); round++) {
-      if (Buffer.byteLength(JSON.stringify(context)) > 128000)
+      const textual = context.map((c) => ({
+        ...c,
+        content: Array.isArray(c.content) ? c.content.filter((b) => b.type !== 'image') : c.content
+      }));
+      if (
+        Buffer.byteLength(JSON.stringify(textual)) > 128000 ||
+        Buffer.byteLength(JSON.stringify(context)) > 24 * 1024 * 1024
+      )
         throw Error('Conversation context limit');
       let called = false;
       for await (const item of model.stream(context, { signal, tools: tools.definitions })) {
@@ -110,7 +116,8 @@ export async function runChatTurn({
           await journal.appendEvent(input, 'tool', { name: item.name, status: 'running' });
           const value = await tools.execute(item.name, args, { scope: current, signal });
           await check();
-          const output = redactChatText(JSON.stringify(value), secrets);
+          const { media, ...metadata } = value;
+          const output = redactChatText(JSON.stringify(metadata), secrets);
           if (Buffer.byteLength(output) > 32000) throw Error('Tool output limit');
           context.push(
             {
@@ -121,6 +128,8 @@ export async function runChatTurn({
             },
             { type: 'function_call_output', call_id: item.callId, output }
           );
+          if (media?.length)
+            context.push({ role: 'user', content: chatEvidenceContext(value, secrets) });
           await journal.appendEvent(input, 'tool', { name: item.name, status: 'completed' });
         } else throw Error('Unsupported model output');
       }
