@@ -1,0 +1,3 @@
+import {test,expect} from 'vitest';
+import {accessFulcraClient} from '../../../scripts/access-fulcra-client.mjs';
+test('access workflows list only completed uploads while preserving current caller and owner filters',async()=>{const calls=[];const client=accessFulcraClient('synthetic-caller',async(url,options)=>{const u=new URL(String(url));calls.push({url:u,auth:options.headers.Authorization});return new Response(JSON.stringify({files:[]}));});expect(await client.file('/Example/twin/home.json','11111111-1111-4111-8111-111111111111')).toBe(null);expect(calls[0].url.searchParams.get('state')).toBe('uploaded');expect(calls[0].url.searchParams.get('fulcra_userid')).toBe('11111111-1111-4111-8111-111111111111');expect(calls[0].auth).toBe('Bearer synthetic-caller');});
