@@ -2,6 +2,7 @@
  import HomeBuilding from './HomeBuilding.svelte';
  import HomeReconstruction from './HomeReconstruction.svelte';
  import HomeLayoutSchematic from './HomeLayoutSchematic.svelte';
+ import HomeModelComparison from './HomeModelComparison.svelte';
  import {onMount} from 'svelte';
  import {starterPlan,interviewPlan,parseLength,validatePlan,planWarnings} from '$lib/home/layout.js';
  let view=$state('2D');
@@ -18,6 +19,7 @@
  onMount(load);
 </script>
 {#if home.reconstruction?.buildingModel}<HomeBuilding model={home.reconstruction.buildingModel} {oncorrect} readonly={role==='viewer'}/>{/if}
+{#if role==='maintainer'}<HomeModelComparison/>{/if}
 {#if home.reconstruction}<details><summary>Original traced footprints and source review</summary><HomeReconstruction model={home.reconstruction}/></details>{/if}
 <section><h2>Start a correctable floor plan</h2><p>Useful first, precise later. These examples and interview positions are estimates, with north at the top. Saved drafts preserve the accepted house model.</p>
  {#if role==='viewer'}<p>Your household has given you view access.</p>{:else}<fieldset disabled={saving||!!pending}><div class="starters"><button onclick={()=>use(starterPlan('simple'))}>Simple rectangle</button><button onclick={()=>use(starterPlan('hall'))}>Rooms around a hall</button><button onclick={()=>use(starterPlan('lshape'))}>L-shaped starting point</button></div>
