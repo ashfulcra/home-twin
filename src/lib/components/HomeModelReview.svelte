@@ -16,6 +16,11 @@
     actionBusy?: boolean;
     actionError?: string;
   } = $props();
+  let displayNote = $derived(
+    /^Undo approved model change [a-f0-9-]{36}$/.test(review.note)
+      ? 'Undo the saved model change.'
+      : review.note
+  );
   let applied = $derived(review.progress?.status === 'model-applied');
   let held = $derived(review.progress?.status === 'held-for-review');
   let processing = $derived(review.progress?.operation?.active === true);
@@ -73,7 +78,7 @@
 
 <article class="model-review" aria-label="Proposed model correction">
   <h3>Proposed model correction</h3>
-  <p>{review.note}</p>
+  <p>{displayNote}</p>
   <ul>
     {#each review.changes as change}<li>
         {fieldNames[change.field] ?? 'Dimension'}: {change.before} → {change.after} feet
@@ -112,7 +117,7 @@
   {#if review.undo?.status === 'preparing-model-undo'}<p role="status">
       Preparing an undo preview…
     </p>{:else if review.undo?.status === 'undo-preview-ready'}<p role="status">
-      Undo preview ready below. Review it before applying.
+      Undo correction is below.
     </p>{:else if review.undo?.status === 'held-for-review'}<p role="status">
       Undo needs a fresh model review.
     </p>{/if}
@@ -120,10 +125,10 @@
   {#if review.sourceIds?.length}<p class="sources">
       Sources were checked when this proposal was prepared.
     </p>{/if}
-  {#if review.status === 'stale-model'}<p role="status">
+  {#if !applied && review.status === 'stale-model'}<p role="status">
       The home has changed. Ask for a fresh proposal.
     </p>
-  {:else}<button type="button" onclick={open} disabled={busy}
+  {:else if !applied}<button type="button" onclick={open} disabled={busy}
       >{busy ? 'Opening preview…' : 'Preview change'}</button
     >{/if}
   {#if failure}<p role="alert">{failure}</p>{/if}

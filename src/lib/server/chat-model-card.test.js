@@ -29,3 +29,35 @@ test('chat shell renders before browser mount while model operation state is unc
     'Ask your home'
   );
 });
+
+test('saved historical correction does not ask to redo an already applied proposal', () => {
+  const body = render(HomeModelReview, {
+    props: {
+      review: {
+        ...review,
+        status: 'stale-model',
+        progress: { status: 'model-applied', revision: 8 }
+      },
+      canApply: true,
+      loadPreview: async () => null
+    }
+  }).body;
+  expect(body).toContain('Applied to your home');
+  expect(body).toContain('Review undo');
+  expect(body).not.toContain('Ask for a fresh proposal');
+  expect(body).not.toContain('Preview change');
+});
+
+test('inverse card describes Undo without exposing its internal action identifier', () => {
+  const body = render(HomeModelReview, {
+    props: {
+      review: {
+        ...review,
+        note: 'Undo approved model change 22222222-2222-4222-8222-222222222222'
+      },
+      loadPreview: async () => null
+    }
+  }).body;
+  expect(body).toContain('Undo the saved model change.');
+  expect(body).not.toContain('Undo approved model change 22222222');
+});
