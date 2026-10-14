@@ -6,6 +6,20 @@ import { tmpdir } from 'node:os';
 import { modelPatchHome, modelPatchDraft } from '../test-fixtures/model-patch.js';
 import { createChatModelPatches } from '../../../scripts/chat-model-patches.mjs';
 const owner = '33333333-3333-4333-8333-333333333333';
+
+for (const name of ['publication.json', 'admission.json', 'household-refresh.json']) {
+  test('native model writer preserves malformed shared ' + name + ' without effects', async () => {
+    for (const value of [null, false, 0, '', []]) {
+      const f = await fixture(),
+        path = join(f.directory, name),
+        raw = JSON.stringify(value);
+      await writeFile(path, raw, { mode: 0o600 });
+      expect((await f.publisher.publish(f.input, f.request)).status).toBe('held-for-review');
+      expect(f.writes).toHaveLength(0);
+      expect(await readFile(path, 'utf8')).toBe(raw);
+    }
+  });
+}
 async function fixture(approved = true) {
   const parent = await mkdtemp(join(tmpdir(), 'native-model-')),
     directory = join(parent, 'maintainer');

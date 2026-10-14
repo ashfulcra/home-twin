@@ -803,7 +803,6 @@ export async function startChatService(config) {
       if (typeof home.maintainerDirectory !== 'string' || !home.maintainerDirectory)
         throw Error('Explicit private designated-maintainer state required');
       const state = resolve(home.maintainerDirectory);
-      await mkdir(state, { recursive: true, mode: 0o700 });
       assertExternalState(state, fileURLToPath(new URL('../', import.meta.url)));
       const st = await lstat(state);
       if (!st.isDirectory() || st.isSymbolicLink() || st.mode & 0o077)

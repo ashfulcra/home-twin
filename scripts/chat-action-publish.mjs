@@ -8,7 +8,7 @@ import { buildMaintainerCycle } from '../src/lib/home/maintainer-cycle.js';
 import { persistCycle } from './maintainer-journal.mjs';
 import { createCallerMaintainerClient } from './fulcra-ingest.mjs';
 import { buildPublicationIntent } from './maintainer-publish.mjs';
-import { runPublication } from './publication-journal.mjs';
+import { runPublication, assertConfirmedPublicationState } from './publication-journal.mjs';
 import { validateSourceAdmissionDraft } from './chat-source-admission.mjs';
 const hash = (/** @type {any} */ value) =>
   createHash('sha256').update(canonicalJSON(value)).digest('hex');
@@ -42,7 +42,10 @@ export function createChatActionPublisher({
       const st = await lstat(path);
       if (!st.isFile() || st.isSymbolicLink() || st.mode & 0o077 || st.size > 4 * 1024 * 1024)
         throw Error('Private bounded publication state required');
-      return JSON.parse(await readFile(path, 'utf8'));
+      const value = JSON.parse(await readFile(path, 'utf8'));
+      if (!value || typeof value !== 'object' || Array.isArray(value))
+        throw Error('Present publication state is corrupt; preserve and inspect');
+      return value;
     } catch (e) {
       if (e && typeof e === 'object' && 'code' in e && e.code === 'ENOENT') return null;
       throw e;
@@ -194,7 +197,7 @@ export function createChatActionPublisher({
   }
   async function pendingIntent(/** @type {any} */ approval, recovery = false) {
     const pointer = await privateJSON(join(directory, 'publication.json'));
-    if (!pointer || (pointer.status === 'confirmed' && !recovery)) return null;
+    if (!pointer) return null;
     if (
       !['pending', 'confirmed'].includes(pointer.status) ||
       !/^[a-f0-9]{64}$/.test(pointer.intentId)
@@ -202,6 +205,16 @@ export function createChatActionPublisher({
       throw Error('Publication pointer unknown');
     const intent = await privateJSON(join(directory, 'publications', pointer.intentId + '.json'));
     if (!intent) throw Error('Pending publication missing');
+    if (pointer.status === 'confirmed' && !recovery) {
+      assertConfirmedPublicationState(pointer, intent);
+      if (
+        pointer.homeId !== approval.scope.homeId ||
+        pointer.principalId !== approval.scope.principalId ||
+        pointer.root !== approval.scope.root
+      )
+        throw Error('Confirmed publication scope differs');
+      return null;
+    }
     validateIntent(intent, approval);
     return intent;
   }

@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -7,6 +7,39 @@ import { canonicalJSON } from '../home/canonical-json.js';
 import { createChatActionPublisher } from '../../../scripts/chat-action-publish.mjs';
 const sha = (/** @type {any} */ value) =>
   createHash('sha256').update(canonicalJSON(value)).digest('hex');
+
+for (const name of ['publication.json', 'admission.json', 'household-refresh.json']) {
+  test('native record writer preserves malformed shared ' + name + ' without effects', async () => {
+    for (const value of [null, false, 0, '', []]) {
+      const f = await fixture(),
+        path = join(f.directory, name),
+        raw = JSON.stringify(value);
+      await writeFile(path, raw, { mode: 0o600 });
+      expect((await f.publisher.publish(f.record, f.access, f.context)).status).toBe(
+        'held-for-review'
+      );
+      expect(f.writes).toBe(0);
+      expect(await readFile(path, 'utf8')).toBe(raw);
+    }
+  });
+}
+
+test('a confirmed shared pointer must retain its verified immutable intent before another record publication', async () => {
+  const f = await fixture(),
+    path = join(f.directory, 'publication.json'),
+    raw = JSON.stringify({
+      homeId: 'example',
+      principalId: f.scope.principalId,
+      root: '/Example/twin',
+      intentId: 'c'.repeat(64),
+      status: 'confirmed',
+      result: { confirmed: true, intentId: 'c'.repeat(64), revision: 1 }
+    });
+  await writeFile(path, raw, { mode: 0o600 });
+  expect((await f.publisher.publish(f.record, f.access, f.context)).status).toBe('held-for-review');
+  expect(f.writes).toBe(0);
+  expect(await readFile(path, 'utf8')).toBe(raw);
+});
 async function fixture() {
   const directory = await mkdtemp(join(tmpdir(), 'chat-action-pub-'));
   const scope = {

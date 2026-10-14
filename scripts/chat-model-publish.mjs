@@ -37,7 +37,10 @@ export function createChatModelPublisher({
       const st = await lstat(path);
       if (!st.isFile() || st.isSymbolicLink() || st.mode & 0o077 || st.size > 8 * 1024 * 1024)
         throw Error('Private bounded model publication state required');
-      return JSON.parse(await readFile(path, 'utf8'));
+      const value = JSON.parse(await readFile(path, 'utf8'));
+      if (!value || typeof value !== 'object' || Array.isArray(value))
+        throw Error('Present model publication state is corrupt; preserve and inspect');
+      return value;
     } catch (e) {
       if (missing(e)) return null;
       throw e;
