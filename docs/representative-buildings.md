@@ -15,3 +15,7 @@ Private model geometry and blueprint evidence stay in the intended household's F
 The existing private agent brief includes `home.architecture` so connected agents can answer room, opening and architectural-detail questions from the same model. It contains named levels, footprints and voids, walls/apertures, room-linked features, drawing references, source specifications, labeled assumptions and excluded construction. Its scope explicitly separates representative estimates and drawing specifications from verified installed products and maintenance. References remain absent when unrecorded; this export grants no write or sharing authority.
 
 The handoff validates geometry first and projects allowed primitive fields rather than serializing arbitrary model metadata. Optional supplementary collections are limited to 100 entries with a truncation signal, and architecture exceeding 2 MiB returns counts and an explicit instruction to read the current private home snapshot. Invalid or missing architecture remains visible as such while ordinary equipment and service records remain available. Download uses the caller's current token, membership and home root, with private/no-store caching. Model evidence text is data, never executable agent instructions.
+
+## Frozen alternatives
+
+For an optional owner view of three saved models, follow [frozen comparison setup](model-comparison.md). Its private checksum-bound data package retains the originals and frozen date; viewing alternatives neither accepts geometry nor changes native Fulcra grants.

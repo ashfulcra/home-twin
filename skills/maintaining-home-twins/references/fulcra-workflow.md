@@ -78,6 +78,8 @@ Overview presents bounded targeted questions from current records and routine co
 
 Use the hosted Layout 2D/3D switch to explore synthetic starters or interview drafts. Both views use the same room coordinates and selection. The compass follows quarter-turn rotations without reflection. Illustrated depth is not a height measurement; request captures for irregular walls, openings and stairs. Changing the view does not save a draft or update accepted geometry.
 
+For representative architecture and optional owner-only frozen alternatives, follow [representative buildings](../../../docs/representative-buildings.md) and [comparison setup](../../../docs/model-comparison.md). Retain original model/source versions; viewing a draft is separate from accepting geometry.
+
 ## Household record lookup
 
 Use Find records for system, provider/trade, model or care-task words. Equipment results show actual completed service and recorded provider, while history and schedules keep their own status/date. Open source links before resolving uncertainty. No match or missing date/contact stays unknown; do not turn it into a negative home fact. Search contains only the current authenticated home records, not held proposals or private agent journals.
@@ -93,7 +95,6 @@ Use the audited cycle command above with the same verified root and existing sta
 ### Join request discovery
 
 The named app creates the exact request-file share disclosed at sign-in. Once confirmed, the owner discovers it in **Household → Join requests**, with an attention badge on open/refocus and **Refresh requests** for a manual check. The manual compatibility path requires the applicant's separate exact-file sharing consent. A private save alone is not owner delivery; no off-app email/push is configured. The code remains a fallback. Treat unavailable, partial, unsupported or changed shares and unverified decisions as explicit review work, never as no requests or delivered membership. Discovery grants no access. See [owner inbox contract](../../../docs/join-requests.md#owner-inbox-contract) for bounds.
-
 
 For the designated current-owner agent, use the same existing private maintainer state:
 
