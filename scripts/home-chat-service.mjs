@@ -10,6 +10,8 @@ import { loadHouseModels } from './chat-model-settings.mjs';
 import { createChatHomeTools } from './chat-home-tools.mjs';
 import { createChatUploads } from './chat-uploads.mjs';
 import { createChatModelPatches } from './chat-model-patches.mjs';
+import { createChatModelJobs } from './chat-model-jobs.mjs';
+import { createChatModelPublisher } from './chat-model-publish.mjs';
 import { createChatActions } from './chat-actions.mjs';
 import { chatActionSourceVerifier } from './chat-action-sources.mjs';
 import { createChatActionPublisher } from './chat-action-publish.mjs';
@@ -19,6 +21,50 @@ import { processChatFile, processChatText } from './chat-file-processing.mjs';
 import { accessFulcraClient } from './access-fulcra-client.mjs';
 import { homeRole } from '../src/lib/home/access.js';
 import { validateChatScope, validateChatTurn } from '../src/lib/home/chat-contract.js';
+/** Explicit native model-action opt-in; never creates a replacement maintainer state.
+ * @param {any} config @param {any} authorize @param {any} verifySources @param {any} modelReviews */
+export async function createModelActionJobs(config, authorize, verifySources, modelReviews) {
+  const selected = config.homes.filter((/** @type {any} */ h) => h.modelActions === true);
+  if (!selected.length) return null;
+  if (!modelReviews) throw Error('Model reviews required for native actions');
+  /** @type {Map<string,any>} */ const native = new Map();
+  for (const home of selected) {
+    if (
+      home.modelReviews !== true ||
+      home.recordActions !== true ||
+      typeof home.maintainerDirectory !== 'string' ||
+      !home.maintainerDirectory
+    )
+      throw Error('Existing designated maintainer and model reviews required');
+    const state = resolve(home.maintainerDirectory);
+    assertExternalState(state, fileURLToPath(new URL('../', import.meta.url)));
+    const st = await lstat(state);
+    if (!st.isDirectory() || st.isSymbolicLink() || st.mode & 0o077 || native.has(home.homeId))
+      throw Error('One existing private model maintainer per home required');
+    native.set(
+      home.homeId,
+      createChatModelPublisher({
+        directory: state,
+        authorize,
+        verifySources,
+        readApproved: (/** @type {any} */ i, /** @type {any} */ r) =>
+          modelReviews.readApproved(i, r),
+        prepareModelPatch: (
+          /** @type {any} */ d,
+          /** @type {any} */ c,
+          /** @type {any} */ r,
+          /** @type {any} */ b
+        ) => modelReviews.prepare(d, c, r, b)
+      })
+    );
+  }
+  return createChatModelJobs({
+    directory: join(config.directory, 'model-jobs'),
+    authorize,
+    reviewsFor: (/** @type {string} */ id) => (native.has(id) ? modelReviews : null),
+    publisherFor: (/** @type {string} */ id) => native.get(id)
+  });
+}
 /** Persistent ordinary worker; browser disconnect does not cancel the job. @param {any} options */
 export async function createChatWorker({
   directory,
@@ -31,7 +77,9 @@ export async function createChatWorker({
   actions,
   actionsFor,
   modelReviews,
-  modelReviewsFor
+  modelReviewsFor,
+  modelJobs,
+  modelJobsFor
 }) {
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const root = await lstat(directory);
@@ -40,6 +88,8 @@ export async function createChatWorker({
   /** @type {Map<string,Promise<any>>} */ const journals = new Map();
   /** @type {Map<string,any>} */ const active = new Map();
   /** @type {Map<string,any>} */ const recordJobs = new Map();
+  /** @type {Map<string,any>} */ const modelWork = new Map();
+  /** @type {Map<string,Promise<any>>} */ const modelTails = new Map();
   async function bind(/** @type {any} */ input) {
     if (
       typeof input.token !== 'string' ||
@@ -80,7 +130,9 @@ export async function createChatWorker({
     scope.homeId + '/' + scope.principalId + '/' + id;
   return {
     async idle() {
-      await Promise.all([...active.values(), ...recordJobs.values()].map((x) => x.promise));
+      await Promise.all(
+        [...active.values(), ...recordJobs.values(), ...modelWork.values()].map((x) => x.promise)
+      );
     },
     /** @param {any} request */ async dispatch(request) {
       if (
@@ -97,9 +149,16 @@ export async function createChatWorker({
       const selectedModel = modelFor ? modelFor(scope.homeId) : model;
       const selectedActions = actionsFor ? actionsFor(scope.homeId) : actions;
       const selectedReviews = modelReviewsFor ? modelReviewsFor(scope.homeId) : modelReviews;
+      const possibleJobs = modelJobsFor ? modelJobsFor(scope.homeId) : modelJobs;
+      const selectedJobs = possibleJobs?.available(scope.homeId) ? possibleJobs : null;
       if (request.action === 'status')
         return {
           available: !!selectedModel,
+          ...(selectedJobs
+            ? {
+                modelActions: scope.role === 'maintainer' && scope.principalId === scope.ownerUserId
+              }
+            : {}),
           ...(uploads ? { uploads: ['maintainer', 'contributor'].includes(scope.role) } : {}),
           ...(selectedReviews
             ? { modelReviews: ['maintainer', 'contributor'].includes(scope.role) }
@@ -131,6 +190,69 @@ export async function createChatWorker({
           token: request.token,
           homeId: scope.homeId
         });
+      }
+      if (['apply-model', 'model-status'].includes(request.action)) {
+        if (!selectedJobs) throw Error('Unsupported model action');
+        if (scope.role !== 'maintainer' || scope.principalId !== scope.ownerUserId)
+          throw Error('Current designated owner required for model actions');
+        if (!request.input?.conversationId) throw Error('Exact model request required');
+        await journal.readConversation(request.input.conversationId);
+        const current = { token: request.token, homeId: scope.homeId },
+          input = request.input;
+        const key = jobKey(scope, input.conversationId) + '/' + input.actionId;
+        if (request.action === 'model-status')
+          return {
+            ...(await selectedJobs.status(input, current)),
+            operation: { active: modelWork.has(key) }
+          };
+        if (active.has(jobKey(scope, input.conversationId)))
+          throw Error('Wait for the reply before applying the model');
+        const old = modelWork.get(key);
+        if (old) {
+          if (
+            ['conversationId', 'actionId', 'digest'].some((k) => old.input[k] !== input[k]) ||
+            Object.keys(input).length !== 3
+          )
+            throw Error('Changed model request intent');
+          await old.admission;
+          return { ...(await selectedJobs.status(input, current)), operation: { active: true } };
+        }
+        if (modelWork.size >= 8) throw Error('Model worker busy; retry the same request later');
+        /** @type {any} */ const job = {
+          input: structuredClone(input),
+          admission: null,
+          promise: null
+        };
+        modelWork.set(key, job);
+        try {
+          job.admission = selectedJobs.request(input, current);
+          await job.admission;
+          const saved = await selectedJobs.status(input, current);
+          if (['model-applied', 'held-for-review'].includes(saved.status)) {
+            modelWork.delete(key);
+            return { ...saved, operation: { active: false } };
+          }
+          const prior = modelTails.get(scope.homeId) ?? Promise.resolve();
+          job.promise = prior
+            .catch(() => {})
+            .then(async () => {
+              try {
+                return await selectedJobs.run(input, current);
+              } catch {
+                return { status: 'model-unconfirmed' };
+              } finally {
+                modelWork.delete(key);
+              }
+            });
+          modelTails.set(scope.homeId, job.promise);
+          job.promise.then(() => {
+            if (modelTails.get(scope.homeId) === job.promise) modelTails.delete(scope.homeId);
+          });
+          return { ...saved, operation: { active: true } };
+        } catch (e) {
+          modelWork.delete(key);
+          throw e;
+        }
       }
       if (request.action === 'apply-record') {
         if (!selectedActions || !['maintainer', 'contributor'].includes(scope.role))
@@ -512,7 +634,9 @@ export async function startChatService(config) {
           secretsFor: (/** @type {any} */ scope) => models.get(scope.homeId)?.secrets ?? []
         })
       : null;
+    const modelJobs = await createModelActionJobs(config, authorize, verifySources, modelReviews);
     worker = await createChatWorker({
+      modelJobs,
       directory: join(config.directory, 'runs'),
       authorize,
       modelFor: (/** @type {string} */ homeId) => models.get(homeId),
