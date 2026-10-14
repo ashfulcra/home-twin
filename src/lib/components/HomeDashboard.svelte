@@ -1,116 +1,946 @@
 <script lang="ts">
- import HomeChat from './HomeChat.svelte';
- import HomeSourceUpload from './HomeSourceUpload.svelte';
- import HomeKnowledge from './HomeKnowledge.svelte';
- import HomeFeeds from './HomeFeeds.svelte';
- import HomeLayout from './HomeLayout.svelte';
- import HomeAssemblyPreview from './HomeAssemblyPreview.svelte';
- import HomeCare from './HomeCare.svelte';
- import SharedHomeConnect from './SharedHomeConnect.svelte';
- import HomeAgentStart from './HomeAgentStart.svelte';
- import HomeJoin from './HomeJoin.svelte';
- import HomeJoinInbox from './HomeJoinInbox.svelte';
- import { onMount,tick } from 'svelte';
- let home: any = $state(null);let firstLoad=true;
- let deployment:any=$state(null);let join:any=$state(null);
- let joinInbox:any=$state(null);let inboxError=$state('');let inboxChecking=$state(false);let inboxGeneration=0;
- async function refreshJoinInbox(){if(!deployment||role!=='maintainer'||loadState!=='ready'||inboxChecking)return;const generation=++inboxGeneration;inboxChecking=true;inboxError='';try{const r=await fetch('/api/home/join-inbox',{cache:'no-store'});const body=await r.json();if(generation!==inboxGeneration)return;if(!r.ok)throw new Error(body.message??'Join requests could not be checked.');joinInbox=body;}catch(e){if(generation===inboxGeneration){joinInbox=null;inboxError=e instanceof Error?e.message:String(e);}}finally{if(generation===inboxGeneration)inboxChecking=false;}}
- function correctRoom(room:any){section='Contributions';if(pending||saving){saveMessage='Finish confirming the pending contribution before starting a room correction.';return;}kind='geometry';entityId='';text=`Room: ${room.name} (${room.level}; model ID ${room.id})\n${room.sourcePage?'Drawing '+room.sourceSheet+', page '+room.sourcePage+'\n':''}Correction: `;saveMessage='Describe what should change. Your correction is saved for the home maintainer to reconcile.';}
- let loadState = $state('loading');
- let errorMessage = $state('');
- let agentStatus=$state('');
- let followups:any=$state(null);let showMoreQuestions=$state(false);let sourceRequest:any=$state(null);
- function openFollowup(q:any){const item=home.equipment.find((e:any)=>e.id===q.entityId);sourceRequest={key:q.id,homeId:home.id,revision:home.revision,entityId:q.entityId??'',title:(q.kind==='equipment-details'?'Equipment label':q.kind==='service-history'?'Service record':'Provider record')+(item?' — '+item.name:'')};section=q.destination;}
+  import { homeProjectionRefresh } from '$lib/home/chat-home-refresh.js';
+  import HomeChat from './HomeChat.svelte';
+  import HomeSourceUpload from './HomeSourceUpload.svelte';
+  import HomeKnowledge from './HomeKnowledge.svelte';
+  import HomeFeeds from './HomeFeeds.svelte';
+  import HomeLayout from './HomeLayout.svelte';
+  import HomeAssemblyPreview from './HomeAssemblyPreview.svelte';
+  import HomeCare from './HomeCare.svelte';
+  import SharedHomeConnect from './SharedHomeConnect.svelte';
+  import HomeAgentStart from './HomeAgentStart.svelte';
+  import HomeJoin from './HomeJoin.svelte';
+  import HomeJoinInbox from './HomeJoinInbox.svelte';
+  import { onMount, tick } from 'svelte';
+  let home: any = $state(null);
+  let firstLoad = true;
+  let callerId = '';
+  let homeGeneration = 0;
+  let disposed = false;
+  let refreshNotice = $state('');
+  const refreshProjection = homeProjectionRefresh(
+    () => fetch('/api/home', { cache: 'no-store' }),
+    () => ({
+      homeId: home?.id,
+      callerId,
+      revision: home?.revision,
+      generation: homeGeneration,
+      disposed
+    }),
+    (data: any) => {
+      home = data.home;
+      followups = data.followups;
+      role = data.role;
+      review = data.review ?? [];
+      reviewContext = data.reviewContext ?? [];
+      refreshNotice = '';
+    },
+    (status: number) => {
+      home = null;
+      loadState = 'error';
+      errorMessage =
+        status === 401
+          ? 'Please sign in again.'
+          : 'Your home access changed. Refresh to check your access.';
+      homeGeneration++;
+    }
+  );
+  async function modelSaved(expected: any) {
+    const generation = homeGeneration;
+    const same = () =>
+      !disposed &&
+      generation === homeGeneration &&
+      expected.homeId === home?.id &&
+      expected.callerId === callerId;
+    try {
+      const refreshed = await refreshProjection(expected);
+      if (!same()) return;
+      if (!refreshed && home?.revision < expected.revision)
+        refreshNotice = 'Your change is saved. Refresh home records to update this view.';
+    } catch {
+      if (same()) refreshNotice = 'Your change is saved. Home records could not be refreshed yet.';
+    }
+  }
+  let deployment: any = $state(null);
+  let join: any = $state(null);
+  let joinInbox: any = $state(null);
+  let inboxError = $state('');
+  let inboxChecking = $state(false);
+  let inboxGeneration = 0;
+  async function refreshJoinInbox() {
+    if (!deployment || role !== 'maintainer' || loadState !== 'ready' || inboxChecking) return;
+    const generation = ++inboxGeneration;
+    inboxChecking = true;
+    inboxError = '';
+    try {
+      const r = await fetch('/api/home/join-inbox', { cache: 'no-store' });
+      const body = await r.json();
+      if (generation !== inboxGeneration) return;
+      if (!r.ok) throw new Error(body.message ?? 'Join requests could not be checked.');
+      joinInbox = body;
+    } catch (e) {
+      if (generation === inboxGeneration) {
+        joinInbox = null;
+        inboxError = e instanceof Error ? e.message : String(e);
+      }
+    } finally {
+      if (generation === inboxGeneration) inboxChecking = false;
+    }
+  }
+  function correctRoom(room: any) {
+    section = 'Contributions';
+    if (pending || saving) {
+      saveMessage = 'Finish confirming the pending contribution before starting a room correction.';
+      return;
+    }
+    kind = 'geometry';
+    entityId = '';
+    text = `Room: ${room.name} (${room.level}; model ID ${room.id})\n${room.sourcePage ? 'Drawing ' + room.sourceSheet + ', page ' + room.sourcePage + '\n' : ''}Correction: `;
+    saveMessage =
+      'Describe what should change. Your correction is saved for the home maintainer to reconcile.';
+  }
+  let loadState = $state('loading');
+  let errorMessage = $state('');
+  let agentStatus = $state('');
+  let followups: any = $state(null);
+  let showMoreQuestions = $state(false);
+  let sourceRequest: any = $state(null);
+  function openFollowup(q: any) {
+    const item = home.equipment.find((e: any) => e.id === q.entityId);
+    sourceRequest = {
+      key: q.id,
+      homeId: home.id,
+      revision: home.revision,
+      entityId: q.entityId ?? '',
+      title:
+        (q.kind === 'equipment-details'
+          ? 'Equipment label'
+          : q.kind === 'service-history'
+            ? 'Service record'
+            : 'Provider record') + (item ? ' — ' + item.name : '')
+    };
+    section = q.destination;
+  }
 
- async function requestAgent(){try{const response=await fetch('/api/home/agent-request',{method:'POST'});if(!response.ok)throw new Error('Request could not be saved');agentStatus='Request saved in your Fulcra account. Connect your agent to Fulcra and give it home ID '+home.id+'. Saving this request does not launch an agent.';}catch(e){agentStatus=e instanceof Error?e.message:String(e);}}
- async function ownHome(){try{const response=await fetch('/api/home/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'own'})});const result=await response.json();if(!response.ok)throw new Error('Home connection could not be confirmed');if(result.status==='pending-readback')agentStatus='Connection confirmation is pending. Retry Own home to confirm.';else await load();}catch(e){agentStatus=e instanceof Error?e.message:String(e);}}
- let role=$state('maintainer');
- let joinRequestsSection:HTMLElement|undefined=$state();
- async function viewJoinRequests(){section='Household';await tick();joinRequestsSection?.focus({preventScroll:true});joinRequestsSection?.scrollIntoView({behavior:'auto',block:'start'});}
- let review: any[] = $state([]);
- let reviewContext: any[] = $state([]);
- let kind=$state('note');let entityId=$state('');let field=$state('serial');let value=$state('');let text=$state('');let noteSourceId=$state('');let contactId=$state('');let performedAt=$state('');let saveMessage=$state('');let saving=$state(false);let pending: any=$state(null);
- async function contribute(){
-  pending??={id:crypto.randomUUID(),homeId:home.id,baseRevision:home.revision,kind,...(entityId?{entityId}:{}),...(kind==='fact'?{field,value}:{text}),...(kind==='note'&&noteSourceId?{sourceIds:[noteSourceId]}:{}),...(kind==='maintenance'?{performedAt,...(contactId?{contactId}:{})}: {})};
-  saving=true;saveMessage='';
-  try{const response=await fetch('/api/home/contributions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pending)});const result=await response.json();if(!response.ok){if(response.status===400)pending=null;throw new Error(result.message??'Save could not be confirmed. Retry this contribution.');}if(result.status==='pending-readback'){saveMessage='Submitted; storage confirmation is pending. Retry this same contribution.';}else{pending=null;text='';value='';noteSourceId='';saveMessage='Saved. Routine additions appear below; contradictions stay in review.';await load();}}catch(e){saveMessage=e instanceof Error?e.message:String(e);}finally{saving=false;}
- }
- let query = $state('');
- let section = $state('Overview');
- const sections = ['Overview','Chat','Find records','Equipment','Maintenance','History','Care','Layout','Devices','Contributions','Sources','Household'];
- let equipment = $derived((home?.equipment ?? []).filter((item: any) => `${item.name} ${item.system} ${item.model} ${item.room?.name ?? ''}`.toLowerCase().includes(query.toLowerCase())));
- async function load() {
-  inboxGeneration++;inboxChecking=false;loadState='loading';errorMessage='';agentStatus='';joinInbox=null;inboxError='';
-  try {
-   const response=await fetch('/api/home');
-   if(!response.ok)throw new Error(response.status===401?'Please sign in again.':'Your home data is temporarily unavailable.');
-   const data=await response.json();const previousHomeId=home?.id;deployment=data.deployment??null;join=data.join??null;home=data.home;if(previousHomeId!==home?.id&&!pending)noteSourceId='';if(sourceRequest&&(sourceRequest.homeId!==home?.id||sourceRequest.revision!==home?.revision))sourceRequest=null;followups=data.followups;role=data.role??'maintainer';review=data.review??[];reviewContext=data.reviewContext??[];loadState=data.status;if(firstLoad&&home?.reconstruction?.buildingModel)section='Layout';firstLoad=false;void refreshJoinInbox();
-  }catch(e){loadState='error';errorMessage=e instanceof Error?e.message:String(e);}
- }
- onMount(()=>{void load();const focus=()=>{if(document.visibilityState==='visible')void refreshJoinInbox();};window.addEventListener('focus',focus);return()=>window.removeEventListener('focus',focus);});
+  async function requestAgent() {
+    try {
+      const response = await fetch('/api/home/agent-request', { method: 'POST' });
+      if (!response.ok) throw new Error('Request could not be saved');
+      agentStatus =
+        'Request saved in your Fulcra account. Connect your agent to Fulcra and give it home ID ' +
+        home.id +
+        '. Saving this request does not launch an agent.';
+    } catch (e) {
+      agentStatus = e instanceof Error ? e.message : String(e);
+    }
+  }
+  async function ownHome() {
+    try {
+      const response = await fetch('/api/home/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'own' })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error('Home connection could not be confirmed');
+      if (result.status === 'pending-readback')
+        agentStatus = 'Connection confirmation is pending. Retry Own home to confirm.';
+      else await load();
+    } catch (e) {
+      agentStatus = e instanceof Error ? e.message : String(e);
+    }
+  }
+  let role = $state('maintainer');
+  let joinRequestsSection: HTMLElement | undefined = $state();
+  async function viewJoinRequests() {
+    section = 'Household';
+    await tick();
+    joinRequestsSection?.focus({ preventScroll: true });
+    joinRequestsSection?.scrollIntoView({ behavior: 'auto', block: 'start' });
+  }
+  let review: any[] = $state([]);
+  let reviewContext: any[] = $state([]);
+  let kind = $state('note');
+  let entityId = $state('');
+  let field = $state('serial');
+  let value = $state('');
+  let text = $state('');
+  let noteSourceId = $state('');
+  let contactId = $state('');
+  let performedAt = $state('');
+  let saveMessage = $state('');
+  let saving = $state(false);
+  let pending: any = $state(null);
+  async function contribute() {
+    pending ??= {
+      id: crypto.randomUUID(),
+      homeId: home.id,
+      baseRevision: home.revision,
+      kind,
+      ...(entityId ? { entityId } : {}),
+      ...(kind === 'fact' ? { field, value } : { text }),
+      ...(kind === 'note' && noteSourceId ? { sourceIds: [noteSourceId] } : {}),
+      ...(kind === 'maintenance' ? { performedAt, ...(contactId ? { contactId } : {}) } : {})
+    };
+    saving = true;
+    saveMessage = '';
+    try {
+      const response = await fetch('/api/home/contributions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pending)
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        if (response.status === 400) pending = null;
+        throw new Error(result.message ?? 'Save could not be confirmed. Retry this contribution.');
+      }
+      if (result.status === 'pending-readback') {
+        saveMessage = 'Submitted; storage confirmation is pending. Retry this same contribution.';
+      } else {
+        pending = null;
+        text = '';
+        value = '';
+        noteSourceId = '';
+        saveMessage = 'Saved. Routine additions appear below; contradictions stay in review.';
+        await load();
+      }
+    } catch (e) {
+      saveMessage = e instanceof Error ? e.message : String(e);
+    } finally {
+      saving = false;
+    }
+  }
+  let query = $state('');
+  let section = $state('Overview');
+  const sections = [
+    'Overview',
+    'Chat',
+    'Find records',
+    'Equipment',
+    'Maintenance',
+    'History',
+    'Care',
+    'Layout',
+    'Devices',
+    'Contributions',
+    'Sources',
+    'Household'
+  ];
+  let equipment = $derived(
+    (home?.equipment ?? []).filter((item: any) =>
+      `${item.name} ${item.system} ${item.model} ${item.room?.name ?? ''}`
+        .toLowerCase()
+        .includes(query.toLowerCase())
+    )
+  );
+  async function load() {
+    homeGeneration++;
+    inboxGeneration++;
+    inboxChecking = false;
+    loadState = 'loading';
+    errorMessage = '';
+    agentStatus = '';
+    joinInbox = null;
+    inboxError = '';
+    try {
+      const response = await fetch('/api/home');
+      if (!response.ok)
+        throw new Error(
+          response.status === 401
+            ? 'Please sign in again.'
+            : 'Your home data is temporarily unavailable.'
+        );
+      const data = await response.json();
+      const previousHomeId = home?.id;
+      callerId = data.callerId ?? '';
+      deployment = data.deployment ?? null;
+      join = data.join ?? null;
+      home = data.home;
+      if (previousHomeId !== home?.id && !pending) noteSourceId = '';
+      if (
+        sourceRequest &&
+        (sourceRequest.homeId !== home?.id || sourceRequest.revision !== home?.revision)
+      )
+        sourceRequest = null;
+      followups = data.followups;
+      role = data.role ?? 'maintainer';
+      review = data.review ?? [];
+      reviewContext = data.reviewContext ?? [];
+      loadState = data.status;
+      if (firstLoad && home?.reconstruction?.buildingModel) section = 'Layout';
+      firstLoad = false;
+      void refreshJoinInbox();
+    } catch (e) {
+      loadState = 'error';
+      errorMessage = e instanceof Error ? e.message : String(e);
+    }
+  }
+  onMount(() => {
+    void load();
+    const focus = () => {
+      if (document.visibilityState === 'visible') void refreshJoinInbox();
+    };
+    window.addEventListener('focus', focus);
+    return () => {
+      disposed = true;
+      homeGeneration++;
+      window.removeEventListener('focus', focus);
+    };
+  });
 </script>
 
 <main class="home-dashboard">
- {#if loadState==='loading'}
-  <p>Loading your home…</p>
- {:else if loadState==='error'}
-  <h1>We couldn’t load your home</h1><p>{errorMessage} Your saved records are unchanged.</p><button onclick={load}>Try again</button>
- {:else if loadState==='joining'&&deployment}
-  <HomeJoin {deployment} {join} onrefresh={load} />
- {:else if loadState==='empty'}
-  <h1>Start with what you know</h1><p>Your home doesn’t need a perfect floor plan. Equipment, contacts and maintenance records can come first.</p><a href="/onboarding">Start guided home setup →</a><SharedHomeConnect onconnected={load} />
- {:else if home}
-  <header>
-   <div><p class="eyebrow">Your home, remembered</p><h1>{home.name}</h1><p>Equipment, care and the knowledge that keeps your home running.</p></div>
-   {#if home.model?.url}<a class="model-link" href={home.model.url} target="_blank" rel="noreferrer">{home.model.label} ↗</a>{/if}
-  </header>
-  <nav aria-label="Home sections">{#each sections as name}<button class:active={section===name} onclick={()=>section=name}>{name==='Layout'&&home.reconstruction?.buildingModel?'Home model':name}{#if name==='Household'&&joinInbox?.attentionCount>0} ({joinInbox.attentionCount}{joinInbox.more?'+':''}){/if}</button>{/each}</nav>
-  {#if deployment&&role==='maintainer'&&(joinInbox?.attentionCount||joinInbox?.more||joinInbox?.unavailableCount||joinInbox?.unsupportedCount||inboxError)}<p role="status">{inboxError?'Join requests could not be checked.':joinInbox?.attentionCount?`${joinInbox.attentionCount}${joinInbox.more?'+':''} join request(s) need your attention.`:'Join request access needs checking.'} <button onclick={viewJoinRequests}>View join requests</button></p>{/if}
-  {#if section==='Overview'}
-   <div class="stats"><article><span>{home.equipment.length}</span><p>Equipment records</p></article><article><span>{home.schedules.filter((s:any)=>s.kind==='maintenance'&&s.state==='past-due').length}</span><p>Known maintenance past due</p></article><article><span>{home.history.filter((h:any)=>h.kind==='maintenance'&&h.status==='completed').length}</span><p>Recorded service visits</p></article></div>
-   <section><h2>What needs a little attention</h2><p class="muted">Missing information stays visible. It won’t stop you using your home.</p><ul>{#each home.knowledgeGaps??[] as gap}<li>{gap}</li>{/each}</ul></section>
-   <section><h2>Build your home knowledge</h2><p class="muted">Start with one useful record. These questions follow the current home information and routine additions; dates and contacts stay unknown until supported.</p>{#if followups?.questions.length}{#each followups.questions.slice(0,showMoreQuestions?100:3) as q}<article><p>{q.prompt}</p>{#if role!=='viewer'}<button onclick={()=>openFollowup(q)}>{q.destination==='Layout'?'Start a rough layout':q.destination==='Household'?'Home setup':'Add a related record'}</button>{/if}{#if q.entityId}<button onclick={()=>{section='Equipment';query=home.equipment.find((e:any)=>e.id===q.entityId)?.name??'';}}>View equipment</button>{/if}</article>{/each}{#if followups.questions.length>3}<button onclick={()=>showMoreQuestions=!showMoreQuestions}>{showMoreQuestions?'Show fewer questions':'Show more questions'}</button>{/if}{:else}<p>No capture questions from the current records.</p>{/if}{#if followups?.reviewCount}<p>{followups.reviewCount} contributions need maintainer review. <button onclick={()=>section='Contributions'}>View review items</button></p>{/if}{#if followups?.unavailableCount}<p>Some contributor records are unavailable. The maintainer needs to check this home's Fulcra shares.</p>{/if}<button onclick={load}>Refresh home records</button></section>
-   <section><h2>At a glance</h2><div class="cards">{#each home.equipment as item}<article><p class="eyebrow">{item.system}</p><h3 id={'equipment-'+item.id}>{item.name}</h3><p>{item.manufacturer??'Manufacturer unknown'} {item.model??'· model unknown'}</p><p class="muted">Last service: {item.lastService?.performedAt??'Not recorded'}</p><p class="muted">Who to call: {item.provider?.name??'Not recorded'}</p><button onclick={()=>{section='Equipment';query=item.name;}}>View equipment</button></article>{/each}</div></section>
-  {:else if section==='Find records'}
-   {#key home.id}<HomeKnowledge {home} onEquipment={(id)=>{section='Equipment';query=home.equipment.find((e:any)=>e.id===id)?.name??'';}} />{/key}
-  {:else if section==='Equipment'}
-   <section><h2>Equipment</h2><label>Find equipment <input type="search" bind:value={query} placeholder="Name, system, model or room" /></label><div class="cards">{#each equipment as item}<article><p class="eyebrow">{item.system}</p><h3 id={'equipment-'+item.id}>{item.name}</h3><p>{item.manufacturer??'Manufacturer unknown'} · {item.model??'Model unknown'} · {item.capacity??''}</p><p>Location: {item.room?.name??'Not placed yet'}</p>{#if item.room?.viewerUrl}<a href={item.room.viewerUrl} target="_blank" rel="noreferrer">Open viewer — select {item.room.name} ↗</a>{/if}<dl>{#each item.facts??[] as fact}<dt>{fact.name}</dt><dd>{fact.value}</dd>{/each}<dt>Last maintenance</dt><dd>{item.lastService?.performedAt??'Not recorded'}</dd><dt>Service provider</dt><dd>{item.provider?.name??'Not recorded'}</dd></dl><p class="muted">Contributed field evidence</p>{#each item.fieldContributions as entry}<p class="muted">{entry.field}: {entry.value} · contributed by {entry.authorUserId} · {entry.recordedAt??'Time not recorded'} · contribution {entry.contributionId}</p>{/each}<p class="muted">Original record sources</p>{#each item.sources as source}{#if source.path||source.attachment}<a class="source-link" href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">{source.title} · {source.freshness}</a>{:else}<p class="muted">{source.title} · original not shared</p>{/if}{/each}</article>{/each}</div>{#if equipment.length===0}<p>No equipment matches that search.</p>{/if}</section>
-  {:else if section==='Maintenance'}
-   <section><h2>Maintenance and schedules</h2><p class="muted">A schedule describes what should happen. Service history records what actually happened.</p>{#if home.schedules.length===0}<p>No maintenance schedules recorded yet.</p>{/if}{#each home.schedules as schedule}<article><p class="eyebrow">{schedule.kind} · {schedule.state}</p><h3>{schedule.name}</h3><p>{schedule.description??''}</p><p>Next due: {schedule.dueAt??'Not recorded'}</p>{#each schedule.sources as source}{#if source.path||source.attachment}<a href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">Read schedule source</a>{:else}<p class="muted">{source.title} · original not shared</p>{/if}{/each}</article>{/each}</section>
-  {:else if section==='History'}
-   <section><h2>Service history</h2>{#if home.history.length===0}<p>No completed maintenance recorded in the imported evidence. This means the date is unknown, not that maintenance never happened.</p>{/if}{#each home.history as event}<article><h3>{event.title??event.kind}</h3><p>{event.performedAt} · {event.status}</p><p>{event.summary??''}</p></article>{/each}</section>
-  {:else if section==='Chat'}
-   {#key home.id}<HomeChat {home} />{/key}
-  {:else if section==='Devices'}
-   <HomeFeeds onEquipment={(id)=>{section='Equipment';query=home.equipment.find((e:any)=>e.id===id)?.name??'';}} />
-  {:else if section==='Layout'}
-   {#if role==='maintainer'}{#key home.id+':'+home.revision+':'+role}<HomeAssemblyPreview />{/key}{/if}
-   <HomeLayout {home} {role} oncorrect={correctRoom} />
-  {:else if section==='Care'}
-   <HomeCare {home} {role} onchanged={load} onEquipment={(id)=>{section='Equipment';query=home.equipment.find((e:any)=>e.id===id)?.name??'';}} />
-  {:else if section==='Contributions'}
-   <section><h2>Add what you know</h2><p>Notes and routine facts help immediately. Contradictions and floor-plan changes wait for the home maintainer’s review.</p>
-    {#if role==='viewer'}<p>Your household has given you view access. Ask the maintainer for contributor access to add information.</p>{:else}<form onsubmit={(event)=>{event.preventDefault();contribute();}}>
-     <fieldset disabled={saving||!!pending}><label>Type <select bind:value={kind}><option value="note">Note</option><option value="fact">Equipment fact</option><option value="maintenance">Completed maintenance</option><option value="geometry">Layout correction</option></select></label>
-     <label>Equipment <select bind:value={entityId}><option value="">Whole home</option>{#each home.equipment as item}<option value={item.id}>{item.name}</option>{/each}</select></label>
-     {#if kind==='fact'}<label>Fact <select bind:value={field}>{#each ['model','manufacturer','serial','capacity','installedAt'] as name}<option value={name}>{name}</option>{/each}</select></label><label>Value <input bind:value required maxlength="500" /></label>{:else}<label>Description <textarea bind:value={text} required maxlength="10000"></textarea></label>{/if}
-     {#if kind==='note'}<label>Related original record (optional) <select bind:value={noteSourceId}><option value="">No original selected</option>{#each home.sources??[] as source}<option value={source.id}>{source.title??'Original record'}{!source.path&&!source.attachment?' · original not shared':''}</option>{/each}</select></label><p class="muted">Link this note to a home record. Check the original when you need to confirm its details.</p>{/if}
-     {#if kind==='maintenance'}<label>Actual service date <input type="date" bind:value={performedAt} required /></label><label>Service provider (optional) <select bind:value={contactId}><option value="">Not recorded</option>{#each home.contacts??[] as c}<option value={c.id}>{c.name}</option>{/each}</select></label>{/if}</fieldset>
-     <button disabled={saving} type="submit">{saving?'Saving…':pending?'Retry same contribution':'Save contribution'}</button>
-    </form>{/if}<p role="status">{saveMessage}</p>
-   </section><section><h2>Household notes</h2>{#if !(home.notes??[]).length}<p>No notes yet.</p>{/if}{#each home.notes??[] as note}<article><p>{note.text}</p><p class="muted">Recorded {note.recordedAt} · author {note.authorUserId}</p></article>{/each}</section>
-   <section><h2>Needs review ({review.length})</h2><p><a href="/api/home/review">Download private review packet</a></p>{#if !review.length}<p>No contributions waiting for review.</p>{/if}{#each reviewContext as item}<article><p class="eyebrow">{item.reason}</p><h3>{item.entity?.name??'Home contribution'}{item.field?' · '+item.field:''}</h3>{#if item.kind==='fact'}<dl><dt>Accepted value</dt><dd>{item.priorValue??'Not recorded or unsupported'}</dd><dt>Proposed value</dt><dd>{item.proposedValue??'Not a supported text value'}</dd></dl>{:else}<p>{item.description??item.proposedValue??'Original needs inspection'}</p>{/if}{#if item.descriptionTruncated}<p class="muted">Description shortened; read the original contribution.</p>{/if}{#if item.noteSourceReferences?.status&&item.noteSourceReferences.status!=='not-recorded'}<h4>Requested original records</h4>{#if item.noteSourceReferences.status==='unverified'}<p>The note’s original-record references could not be read. Inspect the original contribution before deciding.</p>{:else}{#each item.noteSourceReferences.items as reference}<p>{reference.title??reference.id} · {reference.status==='known'?'Registered in this home':reference.status==='ambiguous'?'More than one record uses this ID':'Not in accepted home records'}</p>{/each}{#if item.noteSourceReferences.omittedCount}<p>{item.noteSourceReferences.omittedCount} more references are not shown. Read the original contribution for the full list.</p>{/if}{/if}{/if}{#if item.sourcesOmittedCount}<p>Some linked records are not shown here. Inspect the current home record and original contribution before deciding.</p>{/if}{#if item.sourceReferencesUnverifiedCount}<p>Some requested records could not be identified uniquely in this home. The original contribution retains their references.</p>{/if}<p class="muted">Contributor: {item.authorUserId??'Not authenticated'} · {item.recordedAt??'Time not recorded'}</p><p class="muted">Contribution {item.contributionId??'Missing ID'} · submitted revision {item.baseRevision??'Not recorded'} · current revision {item.currentRevision}</p>{#if item.sources.length}<p>Linked home record sources — inspect before deciding:</p>{#each item.sources as source}{#if source.hasOriginalReference}<a class="source-link" href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">{source.title??source.id} · verified {source.verifiedAt??'Not recorded'}</a>{:else}<p class="muted">{source.title??source.id} · No original reference recorded</p>{/if}{/each}{:else}<p class="muted">No linked accepted-record evidence; ask for the original source.</p>{/if}</article>{/each}<p class="muted">The maintainer reviews original evidence before changing the accepted record. This packet grants no authority and does not accept or reject anything.</p></section>
-  {:else if section==='Household'}
-   {#if deployment&&role==='maintainer'}<section class="join-requests" aria-label="Home join requests" tabindex="-1" bind:this={joinRequestsSection}><HomeJoinInbox inbox={joinInbox} homeId={home.id} ownerUserId={deployment.ownerUserId} errorMessage={inboxError} checking={inboxChecking} onrefresh={refreshJoinInbox} onapproved={()=>{void load();}} /></section>{/if}
-   {#key home.id+":"+home.revision+":"+role}<HomeAgentStart homeId={home.id} {role} />{/key}
-   <section><h2>Your household</h2>{#if !deployment}<p><a href="/onboarding">Set up another home</a></p>{/if}<p>Your role: {role}</p><p>Home ID: {home.id}</p><a href="/api/home/agent-request" download>Download private agent brief</a><p class="muted">Give this brief to your agent connected to the intended Fulcra account. It contains known records, any available home model with source notes and estimates, and targeted questions. It grants no access and does not launch an agent.</p><button onclick={requestAgent}>Save request for a home agent</button><p role="status">{agentStatus}</p>{#if !deployment}<button onclick={ownHome}>Open my original home record</button>{/if}<p>The home maintainer reviews conflicting facts and layout changes. Each contributor keeps their own originals in Fulcra and shares only this home’s contributions.</p><p>Changing a share in Fulcra changes future access. Previously viewed or downloaded information cannot be recalled.</p>{#if !deployment}<SharedHomeConnect onconnected={load} />{/if}</section>
-  {:else if section==='Sources'}
-   {#key sourceRequest?.key??'sources'}<HomeSourceUpload {home} {role} prefill={sourceRequest} onchanged={load} />{/key}<section><h2>Your home knowledge</h2><p class="muted">“Recent” means the source reports verification within 30 days. Importing an old document doesn’t verify its contents.</p>{#each home.sources as source}<article><h3>{source.title}</h3><p>{source.attachment?.originalName??source.path??'Original source'}</p>{#if source.attachment}<p class="muted">Original: {source.attachment.mimeType} · {source.attachment.sizeBytes} bytes · saved {source.recordedAt} · contributor {source.authorUserId}</p>{/if}<p>Verified: {source.verifiedAt??'Not recorded'} · {source.freshness}</p>{#if source.path||source.attachment}<a href={'/api/home/source?id='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">{source.attachment?'Download original source':'Read original source'} ↗</a>{:else}<p class="muted">Source metadata only · original not shared</p>{/if}</article>{/each}</section>
+  {#if refreshNotice}<p role="status">
+      {refreshNotice} <button onclick={load}>Refresh home records</button>
+    </p>{/if}
+  {#if loadState === 'loading'}
+    <p>Loading your home…</p>
+  {:else if loadState === 'error'}
+    <h1>We couldn’t load your home</h1>
+    <p>{errorMessage} Your saved records are unchanged.</p>
+    <button onclick={load}>Try again</button>
+  {:else if loadState === 'joining' && deployment}
+    <HomeJoin {deployment} {join} onrefresh={load} />
+  {:else if loadState === 'empty'}
+    <h1>Start with what you know</h1>
+    <p>
+      Your home doesn’t need a perfect floor plan. Equipment, contacts and maintenance records can
+      come first.
+    </p>
+    <a href="/onboarding">Start guided home setup →</a><SharedHomeConnect onconnected={load} />
+  {:else if home}
+    <header>
+      <div>
+        <p class="eyebrow">Your home, remembered</p>
+        <h1>{home.name}</h1>
+        <p>Equipment, care and the knowledge that keeps your home running.</p>
+      </div>
+      {#if home.model?.url}<a
+          class="model-link"
+          href={home.model.url}
+          target="_blank"
+          rel="noreferrer">{home.model.label} ↗</a
+        >{/if}
+    </header>
+    <nav aria-label="Home sections">
+      {#each sections as name}<button
+          class:active={section === name}
+          onclick={() => (section = name)}
+          >{name === 'Layout' && home.reconstruction?.buildingModel
+            ? 'Home model'
+            : name}{#if name === 'Household' && joinInbox?.attentionCount > 0}
+            ({joinInbox.attentionCount}{joinInbox.more ? '+' : ''}){/if}</button
+        >{/each}
+    </nav>
+    {#if deployment && role === 'maintainer' && (joinInbox?.attentionCount || joinInbox?.more || joinInbox?.unavailableCount || joinInbox?.unsupportedCount || inboxError)}<p
+        role="status"
+      >
+        {inboxError
+          ? 'Join requests could not be checked.'
+          : joinInbox?.attentionCount
+            ? `${joinInbox.attentionCount}${joinInbox.more ? '+' : ''} join request(s) need your attention.`
+            : 'Join request access needs checking.'}
+        <button onclick={viewJoinRequests}>View join requests</button>
+      </p>{/if}
+    {#if section === 'Overview'}
+      <div class="stats">
+        <article>
+          <span>{home.equipment.length}</span>
+          <p>Equipment records</p>
+        </article>
+        <article>
+          <span
+            >{home.schedules.filter((s: any) => s.kind === 'maintenance' && s.state === 'past-due')
+              .length}</span
+          >
+          <p>Known maintenance past due</p>
+        </article>
+        <article>
+          <span
+            >{home.history.filter((h: any) => h.kind === 'maintenance' && h.status === 'completed')
+              .length}</span
+          >
+          <p>Recorded service visits</p>
+        </article>
+      </div>
+      <section>
+        <h2>What needs a little attention</h2>
+        <p class="muted">Missing information stays visible. It won’t stop you using your home.</p>
+        <ul>
+          {#each home.knowledgeGaps ?? [] as gap}<li>{gap}</li>{/each}
+        </ul>
+      </section>
+      <section>
+        <h2>Build your home knowledge</h2>
+        <p class="muted">
+          Start with one useful record. These questions follow the current home information and
+          routine additions; dates and contacts stay unknown until supported.
+        </p>
+        {#if followups?.questions.length}{#each followups.questions.slice(0, showMoreQuestions ? 100 : 3) as q}<article
+            >
+              <p>{q.prompt}</p>
+              {#if role !== 'viewer'}<button onclick={() => openFollowup(q)}
+                  >{q.destination === 'Layout'
+                    ? 'Start a rough layout'
+                    : q.destination === 'Household'
+                      ? 'Home setup'
+                      : 'Add a related record'}</button
+                >{/if}{#if q.entityId}<button
+                  onclick={() => {
+                    section = 'Equipment';
+                    query = home.equipment.find((e: any) => e.id === q.entityId)?.name ?? '';
+                  }}>View equipment</button
+                >{/if}
+            </article>{/each}{#if followups.questions.length > 3}<button
+              onclick={() => (showMoreQuestions = !showMoreQuestions)}
+              >{showMoreQuestions ? 'Show fewer questions' : 'Show more questions'}</button
+            >{/if}{:else}<p>
+            No capture questions from the current records.
+          </p>{/if}{#if followups?.reviewCount}<p>
+            {followups.reviewCount} contributions need maintainer review.
+            <button onclick={() => (section = 'Contributions')}>View review items</button>
+          </p>{/if}{#if followups?.unavailableCount}<p>
+            Some contributor records are unavailable. The maintainer needs to check this home's
+            Fulcra shares.
+          </p>{/if}<button onclick={load}>Refresh home records</button>
+      </section>
+      <section>
+        <h2>At a glance</h2>
+        <div class="cards">
+          {#each home.equipment as item}<article>
+              <p class="eyebrow">{item.system}</p>
+              <h3 id={'equipment-' + item.id}>{item.name}</h3>
+              <p>{item.manufacturer ?? 'Manufacturer unknown'} {item.model ?? '· model unknown'}</p>
+              <p class="muted">Last service: {item.lastService?.performedAt ?? 'Not recorded'}</p>
+              <p class="muted">Who to call: {item.provider?.name ?? 'Not recorded'}</p>
+              <button
+                onclick={() => {
+                  section = 'Equipment';
+                  query = item.name;
+                }}>View equipment</button
+              >
+            </article>{/each}
+        </div>
+      </section>
+    {:else if section === 'Find records'}
+      {#key home.id}<HomeKnowledge
+          {home}
+          onEquipment={(id) => {
+            section = 'Equipment';
+            query = home.equipment.find((e: any) => e.id === id)?.name ?? '';
+          }}
+        />{/key}
+    {:else if section === 'Equipment'}
+      <section>
+        <h2>Equipment</h2>
+        <label
+          >Find equipment <input
+            type="search"
+            bind:value={query}
+            placeholder="Name, system, model or room"
+          /></label
+        >
+        <div class="cards">
+          {#each equipment as item}<article>
+              <p class="eyebrow">{item.system}</p>
+              <h3 id={'equipment-' + item.id}>{item.name}</h3>
+              <p>
+                {item.manufacturer ?? 'Manufacturer unknown'} · {item.model ?? 'Model unknown'} · {item.capacity ??
+                  ''}
+              </p>
+              <p>Location: {item.room?.name ?? 'Not placed yet'}</p>
+              {#if item.room?.viewerUrl}<a
+                  href={item.room.viewerUrl}
+                  target="_blank"
+                  rel="noreferrer">Open viewer — select {item.room.name} ↗</a
+                >{/if}
+              <dl>
+                {#each item.facts ?? [] as fact}<dt>{fact.name}</dt>
+                  <dd>{fact.value}</dd>{/each}
+                <dt>Last maintenance</dt>
+                <dd>{item.lastService?.performedAt ?? 'Not recorded'}</dd>
+                <dt>Service provider</dt>
+                <dd>{item.provider?.name ?? 'Not recorded'}</dd>
+              </dl>
+              <p class="muted">Contributed field evidence</p>
+              {#each item.fieldContributions as entry}<p class="muted">
+                  {entry.field}: {entry.value} · contributed by {entry.authorUserId} · {entry.recordedAt ??
+                    'Time not recorded'} · contribution {entry.contributionId}
+                </p>{/each}
+              <p class="muted">Original record sources</p>
+              {#each item.sources as source}{#if source.path || source.attachment}<a
+                    class="source-link"
+                    href={'/api/home/source?id=' + encodeURIComponent(source.id)}
+                    target="_blank"
+                    rel="noreferrer">{source.title} · {source.freshness}</a
+                  >{:else}<p class="muted">{source.title} · original not shared</p>{/if}{/each}
+            </article>{/each}
+        </div>
+        {#if equipment.length === 0}<p>No equipment matches that search.</p>{/if}
+      </section>
+    {:else if section === 'Maintenance'}
+      <section>
+        <h2>Maintenance and schedules</h2>
+        <p class="muted">
+          A schedule describes what should happen. Service history records what actually happened.
+        </p>
+        {#if home.schedules.length === 0}<p>
+            No maintenance schedules recorded yet.
+          </p>{/if}{#each home.schedules as schedule}<article>
+            <p class="eyebrow">{schedule.kind} · {schedule.state}</p>
+            <h3>{schedule.name}</h3>
+            <p>{schedule.description ?? ''}</p>
+            <p>Next due: {schedule.dueAt ?? 'Not recorded'}</p>
+            {#each schedule.sources as source}{#if source.path || source.attachment}<a
+                  href={'/api/home/source?id=' + encodeURIComponent(source.id)}
+                  target="_blank"
+                  rel="noreferrer">Read schedule source</a
+                >{:else}<p class="muted">{source.title} · original not shared</p>{/if}{/each}
+          </article>{/each}
+      </section>
+    {:else if section === 'History'}
+      <section>
+        <h2>Service history</h2>
+        {#if home.history.length === 0}<p>
+            No completed maintenance recorded in the imported evidence. This means the date is
+            unknown, not that maintenance never happened.
+          </p>{/if}{#each home.history as event}<article>
+            <h3>{event.title ?? event.kind}</h3>
+            <p>{event.performedAt} · {event.status}</p>
+            <p>{event.summary ?? ''}</p>
+          </article>{/each}
+      </section>
+    {:else if section === 'Chat'}
+      {#key home.id}<HomeChat {home} onModelSaved={modelSaved} />{/key}
+    {:else if section === 'Devices'}
+      <HomeFeeds
+        onEquipment={(id) => {
+          section = 'Equipment';
+          query = home.equipment.find((e: any) => e.id === id)?.name ?? '';
+        }}
+      />
+    {:else if section === 'Layout'}
+      {#if role === 'maintainer'}{#key home.id + ':' + home.revision + ':' + role}<HomeAssemblyPreview
+          />{/key}{/if}
+      <HomeLayout {home} {role} oncorrect={correctRoom} />
+    {:else if section === 'Care'}
+      <HomeCare
+        {home}
+        {role}
+        onchanged={load}
+        onEquipment={(id) => {
+          section = 'Equipment';
+          query = home.equipment.find((e: any) => e.id === id)?.name ?? '';
+        }}
+      />
+    {:else if section === 'Contributions'}
+      <section>
+        <h2>Add what you know</h2>
+        <p>
+          Notes and routine facts help immediately. Contradictions and floor-plan changes wait for
+          the home maintainer’s review.
+        </p>
+        {#if role === 'viewer'}<p>
+            Your household has given you view access. Ask the maintainer for contributor access to
+            add information.
+          </p>{:else}<form
+            onsubmit={(event) => {
+              event.preventDefault();
+              contribute();
+            }}
+          >
+            <fieldset disabled={saving || !!pending}>
+              <label
+                >Type <select bind:value={kind}
+                  ><option value="note">Note</option><option value="fact">Equipment fact</option
+                  ><option value="maintenance">Completed maintenance</option><option
+                    value="geometry">Layout correction</option
+                  ></select
+                ></label
+              >
+              <label
+                >Equipment <select bind:value={entityId}
+                  ><option value="">Whole home</option>{#each home.equipment as item}<option
+                      value={item.id}>{item.name}</option
+                    >{/each}</select
+                ></label
+              >
+              {#if kind === 'fact'}<label
+                  >Fact <select bind:value={field}
+                    >{#each ['model', 'manufacturer', 'serial', 'capacity', 'installedAt'] as name}<option
+                        value={name}>{name}</option
+                      >{/each}</select
+                  ></label
+                ><label>Value <input bind:value required maxlength="500" /></label>{:else}<label
+                  >Description <textarea bind:value={text} required maxlength="10000"
+                  ></textarea></label
+                >{/if}
+              {#if kind === 'note'}<label
+                  >Related original record (optional) <select bind:value={noteSourceId}
+                    ><option value="">No original selected</option
+                    >{#each home.sources ?? [] as source}<option value={source.id}
+                        >{source.title ?? 'Original record'}{!source.path && !source.attachment
+                          ? ' · original not shared'
+                          : ''}</option
+                      >{/each}</select
+                  ></label
+                >
+                <p class="muted">
+                  Link this note to a home record. Check the original when you need to confirm its
+                  details.
+                </p>{/if}
+              {#if kind === 'maintenance'}<label
+                  >Actual service date <input
+                    type="date"
+                    bind:value={performedAt}
+                    required
+                  /></label
+                ><label
+                  >Service provider (optional) <select bind:value={contactId}
+                    ><option value="">Not recorded</option>{#each home.contacts ?? [] as c}<option
+                        value={c.id}>{c.name}</option
+                      >{/each}</select
+                  ></label
+                >{/if}
+            </fieldset>
+            <button disabled={saving} type="submit"
+              >{saving
+                ? 'Saving…'
+                : pending
+                  ? 'Retry same contribution'
+                  : 'Save contribution'}</button
+            >
+          </form>{/if}
+        <p role="status">{saveMessage}</p>
+      </section>
+      <section>
+        <h2>Household notes</h2>
+        {#if !(home.notes ?? []).length}<p>
+            No notes yet.
+          </p>{/if}{#each home.notes ?? [] as note}<article>
+            <p>{note.text}</p>
+            <p class="muted">Recorded {note.recordedAt} · author {note.authorUserId}</p>
+          </article>{/each}
+      </section>
+      <section>
+        <h2>Needs review ({review.length})</h2>
+        <p><a href="/api/home/review">Download private review packet</a></p>
+        {#if !review.length}<p>
+            No contributions waiting for review.
+          </p>{/if}{#each reviewContext as item}<article>
+            <p class="eyebrow">{item.reason}</p>
+            <h3>
+              {item.entity?.name ?? 'Home contribution'}{item.field ? ' · ' + item.field : ''}
+            </h3>
+            {#if item.kind === 'fact'}<dl>
+                <dt>Accepted value</dt>
+                <dd>{item.priorValue ?? 'Not recorded or unsupported'}</dd>
+                <dt>Proposed value</dt>
+                <dd>{item.proposedValue ?? 'Not a supported text value'}</dd>
+              </dl>{:else}<p>
+                {item.description ?? item.proposedValue ?? 'Original needs inspection'}
+              </p>{/if}{#if item.descriptionTruncated}<p class="muted">
+                Description shortened; read the original contribution.
+              </p>{/if}{#if item.noteSourceReferences?.status && item.noteSourceReferences.status !== 'not-recorded'}<h4
+              >
+                Requested original records
+              </h4>
+              {#if item.noteSourceReferences.status === 'unverified'}<p>
+                  The note’s original-record references could not be read. Inspect the original
+                  contribution before deciding.
+                </p>{:else}{#each item.noteSourceReferences.items as reference}<p>
+                    {reference.title ?? reference.id} · {reference.status === 'known'
+                      ? 'Registered in this home'
+                      : reference.status === 'ambiguous'
+                        ? 'More than one record uses this ID'
+                        : 'Not in accepted home records'}
+                  </p>{/each}{#if item.noteSourceReferences.omittedCount}<p>
+                    {item.noteSourceReferences.omittedCount} more references are not shown. Read the original
+                    contribution for the full list.
+                  </p>{/if}{/if}{/if}{#if item.sourcesOmittedCount}<p>
+                Some linked records are not shown here. Inspect the current home record and original
+                contribution before deciding.
+              </p>{/if}{#if item.sourceReferencesUnverifiedCount}<p>
+                Some requested records could not be identified uniquely in this home. The original
+                contribution retains their references.
+              </p>{/if}
+            <p class="muted">
+              Contributor: {item.authorUserId ?? 'Not authenticated'} · {item.recordedAt ??
+                'Time not recorded'}
+            </p>
+            <p class="muted">
+              Contribution {item.contributionId ?? 'Missing ID'} · submitted revision {item.baseRevision ??
+                'Not recorded'} · current revision {item.currentRevision}
+            </p>
+            {#if item.sources.length}<p>Linked home record sources — inspect before deciding:</p>
+              {#each item.sources as source}{#if source.hasOriginalReference}<a
+                    class="source-link"
+                    href={'/api/home/source?id=' + encodeURIComponent(source.id)}
+                    target="_blank"
+                    rel="noreferrer"
+                    >{source.title ?? source.id} · verified {source.verifiedAt ?? 'Not recorded'}</a
+                  >{:else}<p class="muted">
+                    {source.title ?? source.id} · No original reference recorded
+                  </p>{/if}{/each}{:else}<p class="muted">
+                No linked accepted-record evidence; ask for the original source.
+              </p>{/if}
+          </article>{/each}
+        <p class="muted">
+          The maintainer reviews original evidence before changing the accepted record. This packet
+          grants no authority and does not accept or reject anything.
+        </p>
+      </section>
+    {:else if section === 'Household'}
+      {#if deployment && role === 'maintainer'}<section
+          class="join-requests"
+          aria-label="Home join requests"
+          tabindex="-1"
+          bind:this={joinRequestsSection}
+        >
+          <HomeJoinInbox
+            inbox={joinInbox}
+            homeId={home.id}
+            ownerUserId={deployment.ownerUserId}
+            errorMessage={inboxError}
+            checking={inboxChecking}
+            onrefresh={refreshJoinInbox}
+            onapproved={() => {
+              void load();
+            }}
+          />
+        </section>{/if}
+      {#key home.id + ':' + home.revision + ':' + role}<HomeAgentStart
+          homeId={home.id}
+          {role}
+        />{/key}
+      <section>
+        <h2>Your household</h2>
+        {#if !deployment}<p><a href="/onboarding">Set up another home</a></p>{/if}
+        <p>Your role: {role}</p>
+        <p>Home ID: {home.id}</p>
+        <a href="/api/home/agent-request" download>Download private agent brief</a>
+        <p class="muted">
+          Give this brief to your agent connected to the intended Fulcra account. It contains known
+          records, any available home model with source notes and estimates, and targeted questions.
+          It grants no access and does not launch an agent.
+        </p>
+        <button onclick={requestAgent}>Save request for a home agent</button>
+        <p role="status">{agentStatus}</p>
+        {#if !deployment}<button onclick={ownHome}>Open my original home record</button>{/if}
+        <p>
+          The home maintainer reviews conflicting facts and layout changes. Each contributor keeps
+          their own originals in Fulcra and shares only this home’s contributions.
+        </p>
+        <p>
+          Changing a share in Fulcra changes future access. Previously viewed or downloaded
+          information cannot be recalled.
+        </p>
+        {#if !deployment}<SharedHomeConnect onconnected={load} />{/if}
+      </section>
+    {:else if section === 'Sources'}
+      {#key sourceRequest?.key ?? 'sources'}<HomeSourceUpload
+          {home}
+          {role}
+          prefill={sourceRequest}
+          onchanged={load}
+        />{/key}
+      <section>
+        <h2>Your home knowledge</h2>
+        <p class="muted">
+          “Recent” means the source reports verification within 30 days. Importing an old document
+          doesn’t verify its contents.
+        </p>
+        {#each home.sources as source}<article>
+            <h3>{source.title}</h3>
+            <p>{source.attachment?.originalName ?? source.path ?? 'Original source'}</p>
+            {#if source.attachment}<p class="muted">
+                Original: {source.attachment.mimeType} · {source.attachment.sizeBytes} bytes · saved {source.recordedAt}
+                · contributor {source.authorUserId}
+              </p>{/if}
+            <p>Verified: {source.verifiedAt ?? 'Not recorded'} · {source.freshness}</p>
+            {#if source.path || source.attachment}<a
+                href={'/api/home/source?id=' + encodeURIComponent(source.id)}
+                target="_blank"
+                rel="noreferrer"
+                >{source.attachment ? 'Download original source' : 'Read original source'} ↗</a
+              >{:else}<p class="muted">Source metadata only · original not shared</p>{/if}
+          </article>{/each}
+      </section>
+    {/if}
   {/if}
- {/if}
 </main>
 
 <style>
- .join-requests{scroll-margin-top:24px}
- .home-dashboard{max-width:1120px;margin:0 auto;padding:36px 24px 80px;color:#202c2c;font-family:system-ui,sans-serif;background:#f7faf8;min-height:100vh;width:100%;box-sizing:border-box}header{display:flex;justify-content:space-between;align-items:center;gap:24px;margin-bottom:28px}h1{font-size:40px;letter-spacing:-1.4px;margin:8px 0}h2{font-size:25px;margin:0 0 12px}h3{font-size:20px;margin:8px 0}p{line-height:1.6}.eyebrow{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#387367;font-weight:650}.muted{color:#62716d;font-size:14px}nav{display:flex;gap:6px;border-bottom:1px solid #d5e0d9;padding-bottom:12px;flex-wrap:wrap}button,.model-link{padding:10px 16px;border:1px solid #cadbd1;border-radius:8px;background:white;cursor:pointer;color:#254a3c;font-size:14px}nav button{border:0;background:transparent}nav button.active{background:#dceee4}.stats,.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:18px;margin:24px 0}article{background:white;border:1px solid #dbe4df;padding:22px;border-radius:12px;margin:12px 0}.stats article{margin:0}.stats span{font-size:34px;font-weight:650}section{margin-top:32px}a{color:#216c58;text-decoration:underline;text-underline-offset:3px}.model-link{text-decoration:none;white-space:nowrap}.source-link{display:block;margin-top:8px;font-size:13px}li{line-height:1.7;margin-bottom:8px}label{display:block;font-size:14px}fieldset{border:0;padding:0}select,textarea{display:block;padding:12px;margin:8px 0 16px;border:1px solid #becfc5;border-radius:8px;max-width:100%;background:white;color:#202c2c}textarea{width:90%;min-height:100px}input{display:block;width:100%;max-width:480px;padding:12px;border:1px solid #becfc5;border-radius:8px;margin-top:8px;background:white;color:#202c2c}dt{font-size:13px;color:#63736c;margin-top:14px}dd{margin:3px 0;font-size:14px}@media(max-width:600px){header{display:block}.model-link{display:inline-block}.home-dashboard{padding:24px 16px}h1{font-size:32px}}
+  .join-requests {
+    scroll-margin-top: 24px;
+  }
+  .home-dashboard {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 36px 24px 80px;
+    color: #202c2c;
+    font-family: system-ui, sans-serif;
+    background: #f7faf8;
+    min-height: 100vh;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    margin-bottom: 28px;
+  }
+  h1 {
+    font-size: 40px;
+    letter-spacing: -1.4px;
+    margin: 8px 0;
+  }
+  h2 {
+    font-size: 25px;
+    margin: 0 0 12px;
+  }
+  h3 {
+    font-size: 20px;
+    margin: 8px 0;
+  }
+  p {
+    line-height: 1.6;
+  }
+  .eyebrow {
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #387367;
+    font-weight: 650;
+  }
+  .muted {
+    color: #62716d;
+    font-size: 14px;
+  }
+  nav {
+    display: flex;
+    gap: 6px;
+    border-bottom: 1px solid #d5e0d9;
+    padding-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  button,
+  .model-link {
+    padding: 10px 16px;
+    border: 1px solid #cadbd1;
+    border-radius: 8px;
+    background: white;
+    cursor: pointer;
+    color: #254a3c;
+    font-size: 14px;
+  }
+  nav button {
+    border: 0;
+    background: transparent;
+  }
+  nav button.active {
+    background: #dceee4;
+  }
+  .stats,
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(235px, 1fr));
+    gap: 18px;
+    margin: 24px 0;
+  }
+  article {
+    background: white;
+    border: 1px solid #dbe4df;
+    padding: 22px;
+    border-radius: 12px;
+    margin: 12px 0;
+  }
+  .stats article {
+    margin: 0;
+  }
+  .stats span {
+    font-size: 34px;
+    font-weight: 650;
+  }
+  section {
+    margin-top: 32px;
+  }
+  a {
+    color: #216c58;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .model-link {
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .source-link {
+    display: block;
+    margin-top: 8px;
+    font-size: 13px;
+  }
+  li {
+    line-height: 1.7;
+    margin-bottom: 8px;
+  }
+  label {
+    display: block;
+    font-size: 14px;
+  }
+  fieldset {
+    border: 0;
+    padding: 0;
+  }
+  select,
+  textarea {
+    display: block;
+    padding: 12px;
+    margin: 8px 0 16px;
+    border: 1px solid #becfc5;
+    border-radius: 8px;
+    max-width: 100%;
+    background: white;
+    color: #202c2c;
+  }
+  textarea {
+    width: 90%;
+    min-height: 100px;
+  }
+  input {
+    display: block;
+    width: 100%;
+    max-width: 480px;
+    padding: 12px;
+    border: 1px solid #becfc5;
+    border-radius: 8px;
+    margin-top: 8px;
+    background: white;
+    color: #202c2c;
+  }
+  dt {
+    font-size: 13px;
+    color: #63736c;
+    margin-top: 14px;
+  }
+  dd {
+    margin: 3px 0;
+    font-size: 14px;
+  }
+  @media (max-width: 600px) {
+    header {
+      display: block;
+    }
+    .model-link {
+      display: inline-block;
+    }
+    .home-dashboard {
+      padding: 24px 16px;
+    }
+    h1 {
+      font-size: 32px;
+    }
+  }
 </style>

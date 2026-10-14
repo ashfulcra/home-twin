@@ -17,7 +17,7 @@ function controller(refs) {
     )
     .map((n) => n.getText(parsed))
     .join('\n');
-  const script = `const {modelOperationActive,mergeModelProgress,mergeModelReviews,modelProgressComplete}=helpers; let conversationId=refs[0].conversationId, modelReviews=[],modelRefs=refs,modelPoll=null,canApplyModel=true,disposed=false,errorMessage='';const reader={generation:1};const modelDone=new Set();let polls=0, active=false;const modelClient=async(ref,op)=>{polls++;return {...ref,operation:{active},status:op==='undo-status'?'undo-preview-ready':'model-applied'}};${functions}; return {setActive(value){active=value},poll:pollModelProgress,lose(){modelReviews=[]},restore(rows){modelReviews=mergeModelReviews(modelReviews,rows,conversationId)},reviews(){return modelReviews},polls(){return polls}}`;
+  const script = `const {modelOperationActive,mergeModelProgress,mergeModelReviews,modelProgressComplete}=helpers; let conversationId=refs[0].conversationId, modelReviews=[],modelRefs=refs,modelPoll=null,canApplyModel=true,disposed=false,errorMessage='';const reader={generation:1};const notifyModelSaved=()=>undefined;const modelDone=new Set();let polls=0, active=false;const modelClient=async(ref,op)=>{polls++;return {...ref,operation:{active},status:op==='undo-status'?'undo-preview-ready':'model-applied'}};${functions}; return {setActive(value){active=value},poll:pollModelProgress,lose(){modelReviews=[]},restore(rows){modelReviews=mergeModelReviews(modelReviews,rows,conversationId)},reviews(){return modelReviews},polls(){return polls}}`;
   return new Function(
     'helpers',
     'refs',

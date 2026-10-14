@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { modelSavedNotifier } from '$lib/home/chat-home-refresh.js';
   import HomeModelReview from './HomeModelReview.svelte';
   import {
     modelConversationActions,
@@ -14,7 +15,10 @@
   import { chatConversationReader } from '$lib/home/chat-poll-controller.js';
   import { uploadChatFile } from '$lib/home/chat-upload-client.js';
   import { validateChatUpload } from '$lib/home/chat-upload-contract.js';
-  let { home } = $props<{ home: any }>();
+  let { home, onModelSaved = async () => {} } = $props<{
+    home: any;
+    onModelSaved?: (expected: any) => Promise<any>;
+  }>();
   let ready = $state(false),
     available = $state(false),
     sending = $state(false),
@@ -72,9 +76,18 @@
     }
   }
   async function response(url: string, options: RequestInit = {}, writeOnly = false) {
+    const requestGeneration = reader.generation,
+      requestCaller = callerId,
+      requestHome = home.id;
     const r = await fetch(url, { cache: 'no-store', ...options });
     const value = await r.json();
     if (!r.ok) {
+      if (
+        requestGeneration !== reader.generation ||
+        requestCaller !== callerId ||
+        requestHome !== home.id
+      )
+        throw new Error('This request belongs to an earlier chat context.');
       if (r.status === 403 && writeOnly) {
         canSaveRecords = false;
         recordActions = [];
@@ -90,10 +103,18 @@
         canReviewModel = false;
         canApplyModel = false;
         canSaveRecords = false;
+        errorMessage =
+          r.status === 401
+            ? 'Your session expired. Please sign in again to continue.'
+            : 'Your home access changed. Refresh to check your access.';
         reader.select('');
         available = false;
       }
-      throw new Error(value.message ?? 'Chat is temporarily unavailable.');
+      throw new Error(
+        r.status === 401 || (r.status === 403 && !writeOnly)
+          ? errorMessage
+          : (value.message ?? 'Chat is temporarily unavailable.')
+      );
     }
     return value;
   }
@@ -200,7 +221,19 @@
     (url: string, options: RequestInit) => response(url, options, true),
     () => ({ conversationId, generation: reader.generation, enabled: canApplyModel, disposed })
   );
+  const notifyModelSaved = modelSavedNotifier(
+    (expected: any) => onModelSaved(expected),
+    () => ({
+      homeId: home.id,
+      callerId,
+      conversationId,
+      generation: reader.generation,
+      enabled: canApplyModel,
+      disposed
+    })
+  );
   function modelResult(action: any, result: any, undo = false) {
+    if (!undo) void Promise.resolve(notifyModelSaved(action, result)).catch(() => {});
     modelReviews = modelReviews.map((r) =>
       r.actionId === action.actionId && r.digest === action.digest
         ? {
@@ -531,7 +564,7 @@
       <h2>Ask your home</h2>
       <p>Questions, records and the details that keep this home remembered.</p>
     </div>
-    <button onclick={newConversation} disabled={!ready || running || !!savingId}
+    <button onclick={newConversation} disabled={!ready || !available || running || !!savingId}
       >New conversation</button
     >
   </header>
