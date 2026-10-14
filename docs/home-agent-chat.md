@@ -1,15 +1,57 @@
-# Embedded home agent chat
+# Optional house-agent chat
 
-The authenticated Chat tab relays the current Fulcra caller to a persistent worker. The worker rechecks current home membership on each operation and tool read. It does not borrow the owner's token. The current release reads home records, searches knowledge, reads checksum-verified text and bounded image/PDF pages and inspects model components by ID. Contributors and maintainers can add original evidence through the chat file picker. With explicit per-home recordActions configuration, the agent can propose supported notes, facts, contacts, service history and schedules. A human Save uses the existing designated maintainer for routine accepted additions; contradictions stay held. Native model changes additionally require modelActions, current-owner review and exact Preview/Apply. Chat does not grant access, send messages or control devices.
+Use this guide after the home and its authenticated hosted app are set up. Chat is optional; the basic Home Twin skill does not require a model key or worker. For a separate home, start with [independent instances](independent-instances.md). This guide does not create a home, transfer an account or grant access.
 
-Messages have stable conversation and turn IDs. Durable private journals prevent repeated inference on a retry; browser disconnect leaves the job running, while Stop cancels it. Restart marks interrupted runs and never restarts them automatically. Transcript copies are immutable, private to their author's own Fulcra account under `/home-twin-chat/HOME/conversations/CONVERSATION/`. An uncertain upload is reconciled by exact readback and never blindly uploaded again.
+The hosted Chat tab sends the current signed-in Fulcra caller to one persistent worker. Model keys stay on that worker. Each operation checks the caller’s current home access; nobody borrows the owner’s token.
 
-Configure the worker with a private file (permissions0600) and private directories (0700):
+## Choose the capabilities
+
+Start with accepted home records and geometry read-only. Enable each additional capability explicitly for its intended home:
+
+| Capability | Worker configuration | Who can use it |
+|---|---|---|
+| Chat, accepted-source reading and original file upload | Model configured; no action flags needed | Current members can read; contributors/maintainers can explicitly upload |
+| Prepare supported records and Save | `recordActions: true`, existing `maintainerDirectory` | Contributors save their own contributions; designated owner publishes routine accepted additions |
+| Save an uploaded file as accepted source evidence | `sourceActions: true` plus record actions and the same state | Current designated owner |
+| Prepare geometry and open Preview | `modelReviews: true` | Contributors/maintainers; preparation does not apply edits |
+| Apply a reviewed model change and Review undo | `modelActions: true` plus model reviews, record actions and the same state | Current designated owner, exact Preview/Apply decision |
+
+Uploading preserves the original and evidence identity; it does not accept a fact or change geometry. The model can prepare proposals, but cannot click Save or Apply. Contradictions and major geometry remain review work. Undo creates a separate inverse proposal requiring its own Preview/Apply.
+
+## Prepare the environment
+
+Use the complete matching repository, Node22.13 or later, and Python3 with PyMuPDF/Pillow available on the supervised worker’s PATH. Install the tested file-processing dependencies in its intended Python environment:
+
+```sh
+python3 -m pip install -r scripts/requirements-chat-files.txt
+```
+
+Verify the home ID, current owner UUID and canonical root from the intended deployment and authenticated account. The examples below use synthetic `example`, `33333333-3333-4333-8333-333333333333` and `/Example/twin`; replace them with verified values. The existing canonical `home.json` must already exist and match that home/owner. Do not copy another household’s environment, originals, snapshot or state to set up a new one.
+
+Keep worker configuration and model credential files outside repositories, mode0600; private directories are mode0700. Provision a separate random relay secret of at least40characters and a separate provider key per home. A key file contains only its key. Choose a model ID available to that provider account; `YOUR_MODEL_ID` and `GENERATE_A_SEPARATE_RELAY_SECRET_AT_LEAST_40_CHARACTERS` below are placeholders. Never print keys, put them in prompts or command arguments, or store provider keys in the web deployment.
+
+## Initialize state only for a genuinely new home
+
+For a verified new home that has never had a designated maintainer, run the read-only audited cycle before enabling action flags:
+
+```sh
+node scripts/home-maintainer.mjs cycle example /private/example/maintainer-state --root /Example/twin --check-sources
+```
+
+This command creates the new private state and scoped checkpoint while checking the actual signed-in owner, accepted snapshot and originals. It does not publish or schedule anything. Inspect its private report, scope/checkpoint and any access/review blockers; a directory existing by itself is not verified maintainer state. Retain all generated history and intents. Use this exact directory and root for chat actions and later cycles/publications.
+
+For a previously maintained home, use its existing directory. If it is missing, stop action setup and recover the original state from the verified volume/backup; do not run fresh initialization or `mkdir` to replace lost history. A fresh cycle cannot prove that old uncertain writes are resolved. Preserve live locks and reconcile existing pending publication, admission or household-refresh intents by exact readback before fresh work. If recovery is unavailable, record that blocker and resume prerequisite. This guide provides no reset/recovery override. Chat can remain without action flags while recovery is pending, if its separate valid configuration/runtime remains available.
+
+For an explicitly verified legacy `/home/twin` root, use `--legacy-root` instead of `--root`. The flags cannot be combined. See the skill’s [Fulcra workflow](../skills/maintaining-home-twins/references/fulcra-workflow.md) for audited reports, guarded publication and maintainer handoff.
+
+## Configure the worker
+
+The default example permits conversation and explicit role-authorized uploads while leaving accepted-record/model actions disabled:
 
 ```json
 {
-  "key": "a-separate-random-relay-secret-of-at-least-forty-characters",
-  "directory": "/private/home-chat/runtime",
+  "key": "GENERATE_A_SEPARATE_RELAY_SECRET_AT_LEAST_40_CHARACTERS",
+  "directory": "/private/example/chat/runtime",
   "port": 6194,
   "homes": [
     {
@@ -18,38 +60,77 @@ Configure the worker with a private file (permissions0600) and private directori
       "root": "/Example/twin",
       "model": {
         "provider": "anthropic",
-        "model": "claude-sonnet-5-5",
-        "keyFile": "/private/home-chat/secrets/anthropic-key.txt"
+        "model": "YOUR_MODEL_ID",
+        "keyFile": "/private/example/secrets/anthropic-key.txt"
       }
     }
   ]
 }
 ```
 
-Each home's model and private key file are configured separately. No key is inherited by another home. Supported transports are Anthropic Messages and OpenAI Responses; the latter requires provider `openai` and its explicit model ID. Configuration/status checks never make an inference request. API credentials remain in worker memory and private credential files, never in conversation journals, provider prompts, public source, UI status or browser storage.
+For an owner who explicitly wants the complete action interface, use this home entry **after** the initialization/recovery checks above. Retain the same outer relay/runtime configuration:
 
-Run `node scripts/home-chat-service.mjs /private/home-chat/config.json` as a supervised ordinary backend. It binds loopback exclusively. Expose it through an authenticated HTTPS relay. Set the web deployment's private `HOME_CHAT_SERVICE_URL` and `HOME_CHAT_SERVICE_KEY` to that relay and its separate secret; never place the provider key in web build configuration. The service requires both its relay secret and the current Fulcra caller's token. `/health` reveals readiness only.
+```json
+{
+  "homeId": "example",
+  "ownerUserId": "33333333-3333-4333-8333-333333333333",
+  "root": "/Example/twin",
+  "maintainerDirectory": "/private/example/maintainer-state",
+  "recordActions": true,
+  "sourceActions": true,
+  "modelReviews": true,
+  "modelActions": true,
+  "model": {
+    "provider": "anthropic",
+    "model": "YOUR_MODEL_ID",
+    "keyFile": "/private/example/secrets/anthropic-key.txt"
+  }
+}
+```
 
-The optional model field may be absent until an owner provisions it. The Chat screen then reports that its model connection is not configured. Supplying a key does not establish that billing or inference works: verify a bounded actual streamed reply, then an authenticated current-home conversation, refresh, Stop and exact Fulcra transcript readback. Fixture tests and the synthetic UI simulation are not live-provider evidence.
+One home has one designated maintainer. Action setup requires an existing private, nonsymlinked designated state directory. Source actions pin its identity and hold if it disappears or is replaced after startup; do not change directories to evade a hold. Keep each home’s state, runtime and key separate. Supported model transports are Anthropic Messages and OpenAI Responses; OpenAI requires `provider: "openai"` and an explicitly chosen model/key file. No global model/key fallback is inherited by other homes. The model entry may be absent until provisioned; the interface then reports that chat is unconfigured.
 
-Limits: 8KiB input, six existing source IDs, bounded recent context, six model rounds,16tool calls,64KiB output,100turns per conversation, eight concurrent jobs and a120second provider timeout. Originals require exact checksums and current access. The file picker accepts PNG/JPEG/WebP/PDF/UTF-8 text up to200MiB in3MiB resumable chunks. Browser storage retains only stable upload metadata, never file bytes. Selecting the same original resumes missing chunks; Pause preserves existing chunks. Unconfirmed cloud writes only reconcile exact readback. Originals and immutable evidence contributions are stored in the caller’s account; uploading does not accept facts, grant original access or publish a new house model. Read-only users can ask questions but cannot upload.
+## Connect the hosted app
 
-Native PDF/image extraction requires Python3 with PyMuPDF and Pillow on the supervised worker’s PATH. Install the tested versions with `python3 -m pip install -r scripts/requirements-chat-files.txt` in the worker’s Python environment; CI creates its own virtual environment with that same requirements file. It reads up to four selected numbered pages at a time, preserving page counts and explicit partial coverage, with1568px image bounds,45second timeout and at most two processors. Full originals remain unchanged in Fulcra. PDF batches can be requested by source ID; passwords, unsupported formats, pages beyond600 and invalid images are explicit processing errors. Private upload capacity defaults to2GiB across stable jobs and one original finalization at a time. Reaching capacity preserves originals and requires maintainer inspection; no automatic deletion.
+Run the existing worker as a supervised ordinary backend:
 
-Coordination uses native Node SQLite transactions as process locks (Node22.13or later). A process crash releases ownership automatically; no live lock is expired, deleted or stolen. Historical unverified legacy `.lock` files remain explicit recovery blockers. Nonterminal event limits reserve room for completion, Stop and interrupted recovery; older full journals retain history while closing their active turn.
+```sh
+node scripts/home-chat-service.mjs /private/example/chat/config.json
+```
 
-Model review foundation: `scripts/chat-model-patches.mjs` provides private `prepare`, `list`, exact-digest read-only `preview` and separate persisted owner decisions. The authenticated worker exposes preparation per home with `modelReviews: true`. Preparation and preview never apply geometry. Native Apply additionally requires `recordActions: true`, `modelActions: true` and the exact existing `maintainerDirectory`; the native publisher refuses absent or replaced maintainer state. Preparation verifies selected originals and current contributor/maintainer authority, freezes the full home/file-version/model digests and stores only the bounded edits, source receipts and numeric changes. The preview supplies affected wall plan coordinates and before/after elevation dimensions; it rejects stale versions and malformed identities. Raw reconstruction metadata, overrides and originals are never replaced by normalized display data. Source status explicitly describes preparation-time verification; future publication must check the originals again.
+It binds only loopback. Provision the intended authenticated HTTPS relay reachable by the hosted app; relay hosting and service supervision are environment-specific prerequisites, not commands supplied here. The worker requires both its relay secret and the current caller’s Fulcra token. `/health` reports readiness, not idle status or successful inference.
 
-Keep each journal outside the repository in private0700 directories/0600 files. Retention is bounded to30 conversations and50 logical proposals per home/caller. Empty reads allocate nothing. Each immutable proposal has a stable identity and an exclusive, fsynced private staging file. A complete interrupted stage can be recovered with the same digest; a partial stage holds that action while other valid reviews remain readable. At most one bounded stage and one final file exist for each logical proposal. No model geometry is promoted by these methods. Chat shows the proposed dimensions and an exact read-only plan/elevation preview. Geometry publication uses the exact owner decision and separately guarded native publisher, with fresh original-source and baseline checks under the existing maintainer lock. The background queue retains the human request before verification; lost replies recover the same request and uncertain publication performs readback rather than a second upload. Review undo prepares a distinct inverse proposal against the current accepted model; it requires a fresh Preview/Apply and preserves history.
+For a named existing-home app, its private settings must target the same verified home:
 
-The optional model review tool can discover current component IDs with paginated `list_model_components` and inspect them with `read_model_region` before preparing a bounded correction. The worker exposes private model review receipts separately from record actions, and the authenticated `/api/home/chat/model-preview` route only reads the exact saved digest under the current caller. Stale or lost-access previews are removed from the interface. Previewing never saves geometry.
+```text
+HOME_MODE=existing
+HOME_ID=example
+HOME_OWNER_USER_ID=33333333-3333-4333-8333-333333333333
+HOME_ROOT=/Example/twin
+PUBLIC_APP_NAME=Example home
+HOME_CHAT_SERVICE_URL=<intended authenticated HTTPS relay URL>
+HOME_CHAT_SERVICE_KEY=<same separate relay secret>
+```
 
-Supporting file lifecycle: uploading makes the original available in the caller’s chat and saves immutable evidence metadata. A model review may read that exact original before it has been admitted into accepted home records. Such a card explains that a sourced home record must first be saved through the existing reviewed record-save or designated-maintainer workflow; it offers Preview without an unusable Apply. Do not invent a fact or a service record just to admit a file. A routine accepted evidence addition changes the home revision, so prepare a fresh model proposal afterward; never silently rebase the old approval. Accepted source status is distinct from current original verification: Apply still rechecks bytes, permissions, source versions and the exact baseline before any effect. Existing pending requests retain Continue verification for readback, and historical applied receipts retain their saved result.
+`HOME_MODE=existing` means the app targets the already-created record. Preserve that app’s other intended project, harness and authentication settings; follow the official Fulcra app starter for deployment. Provider keys belong only in the worker’s private credential file, never web/build settings or browser storage. API credentials remain out of transcripts, tool output and UI status. No new agent/bus listener, schedule, share or recipient is needed to expose Chat.
 
-Source-only admission foundation: `buildSourceAdmissionReview` prepares a data-only review from the confirmed caller-owned upload receipt and freshly checked original bytes. It keeps the upload's existing contribution UUID, author and capture time. The explicit `sourceOnly` native adapter accepts only that evidence record and requires an injected reader of the separately persisted exact owner decision; it shares the existing maintainer state, lock, immutable publication and read-only uncertain-write recovery. Normal model record tools cannot submit this evidence draft. The source-only adapter is available through the explicit per-home source-action worker protocol; it does not automatically admit uploads or register a model tool. The subsequent UI must retain an explicit owner request before background verification, recover the same request after a lost response, and refresh the home before preparing a new geometry proposal. A data-only review is never an approval.
+## Verify the intended live interface
 
-Source-save job foundation: `createChatSourceJobs` retains private immutable source reviews, explicit current-owner requests, publication admission markers and results. Its trusted decision reader reauthorizes the supplied current caller, verifies the finalized private request and exact reviewed context, then reauthorizes again before returning approval. The original contribution UUID stays unchanged; review versions use their digest, so a stale baseline never silently replaces an earlier decision. Complete staged files can be promoted with identical bytes and fresh authority; incomplete/conflicting stages remain held. A started publication retries only read-only resolution, including after a process restart. A verified already accepted original returns its existing identity without allocating another review or contribution. Retention is bounded to50 reviews per home/owner. The worker and authenticated source-action route are implemented behind an explicit per-home sourceActions setting. The chat file selector now offers a single Save file to home records button for a verified own upload when sourceActions is available. Live activation requires the intended home setting and deployment.
+Configuration and synthetic tests do not prove provider billing, deployed access or publication. Under the intended current account:
 
-Source worker protocol: enable `sourceActions: true` only for an intended home with `recordActions: true` and its exact existing private `maintainerDirectory`. Missing/symlinked/public/replaced state is never auto-created by this selection helper. `source-review` prepares caller-owned upload evidence in the background with no consent or publication; its completion contains the immutable review digest. `save-source` retains the explicit exact owner request before background publication, coalesces active retries and shares the per-home native model queue. `source-status` only reads the saved request; it cannot start a publication. Preparation/publication each allow at most8 active jobs, preserve active ownership across baseline changes and evict only completed unconsumed preparation results to keep the bounded cache usable. The current-cookie owner-only `/api/home/chat/source-actions` route accepts only review/save/status and exact source/request identifiers, with private no-store caching; body data cannot select a home, account, role, root or record. No automatic jobs run on worker startup and model tools cannot request a source save. Existing deployments remain disabled until the intended setting is explicitly enabled after interface acceptance. The file button retains exact account/home/source request identifiers for browser restoration and polls status without creating consent; a lost reply offers Continue verification for that same request. Accepted source saves refresh home records without unmounting chat or clearing its composing text.
+1. Verify one bounded streamed reply, refresh the same conversation, use Stop, and confirm the author’s exact private Fulcra transcript readback.
+2. Upload a supported original; verify its unchanged checksum, source/contribution identity and provider response. A viewer must remain unable to upload or write.
+3. If enabled, review and Save one supported source-linked routine record. A contributor confirms its submitted receipt; acceptance still requires the designated maintainer. Under the designated owner, confirm the native accepted receipt and reload. For owner source-only admission, use **Save file to home records**; never invent a fact just to admit a file.
+4. If model actions are intended, verify exact Preview/Apply/Review undo behavior with synthetic geometry first. Actual home edits require supported evidence and the exact current owner decision. Source admission advances the home revision: prepare a fresh proposal afterward, rather than rebasing an old approval.
 
-Source-save recovery: a failed Save checks the exact retained request read-only. An authoritative inactive unsaved result or terminal held request offers Review file again; that explicit action rechecks status before preparing a data-only review. Unknown and pending requests retain their exact identifiers. If preparation discovers an existing saved request, its reference is restored rather than inventing consent. A new ready review requires a new Save click, and immutable prior server history remains intact.
+Record actual versus synthetic results and concrete access/evidence blockers. Owner readback does not prove that a second household account can read; that account’s own fresh verification remains separate. Chat grants no access, sends no household messages and controls no devices.
+
+## Recovery and operating bounds
+
+Stable conversation/turn/upload/request IDs preserve retries. Browser disconnect keeps a job running; Stop cancels subsequent work. Restart marks interrupted turns without automatically restarting them. Before restarting an existing worker, verify terminal turn journals, no active record/model/source jobs, no live lock and coherent native publication state. Readiness alone is not idle proof.
+
+A lost Save reply retains its exact request and offers **Continue verification**. Uncertain native/cloud writes use exact readback, not a second publication. Only an authoritative inactive unsaved or terminal-held source request offers **Review file again**; a new review needs a new Save. Accepted home refresh preserves the composer/conversation. Originals, prior source versions, construction overrides, immutable decisions and contribution IDs remain intact.
+
+Conversations have private author-account transcripts under `/home-twin-chat/HOME/conversations/CONVERSATION/`. Journals are outside repositories,0700/0600. Record-action storage allows30 action conversations per actor and100 proposals per conversation; model-review storage allows30 conversations per actor and50 total logical proposals; source reviews allow50 per home/owner. These are separate action-store bounds, not an ordinary-chat conversation limit. Complete fsynced staged files can recover identical bytes; partial/conflicting state holds. Native SQLite process coordination releases ownership on crash; unverified legacy lock files remain recovery blockers. Never expire, delete or steal a live lock.
+
+Limits:8KiB input, six source IDs, six model rounds,16tool calls,64KiB output,100turns/conversation, eight concurrent jobs and120second provider timeout. PNG/JPEG/WebP/PDF/UTF-8 text uploads allow200MiB originals in3MiB resumable chunks; metadata-only browser resume retains no original bytes. Private upload capacity defaults to2GiB, with one finalization at a time and no automatic deletion. Extraction reads up to four numbered PDF pages per request, at most600pages,1568px image bounds,45second timeout and two processors; partial coverage is explicit. Periodic maintainer source audit is separately bounded to100sources/10MiB per original; large-file archive/readback is not proof of later full audit coverage. Missing, revoked, changed or unsupported originals are explicit holds, not unchanged evidence.
