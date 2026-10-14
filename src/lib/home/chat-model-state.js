@@ -84,3 +84,23 @@ export function mergeModelProgress(previous, incoming) {
     ? { ...previous, ...(incoming.operation ? { operation: incoming.operation } : {}) }
     : incoming;
 }
+
+/** Skip cheap status reads only while the exact terminal result is still displayed.
+ * @param {any} review @param {any} request */
+export function modelProgressComplete(review, request) {
+  if (!review || !request || !['apply', 'undo'].includes(request.kind)) return false;
+  const progress = request.kind === 'undo' ? review.undo : review.progress;
+  if (
+    !progress ||
+    progress.operation?.active === true ||
+    ['conversationId', 'actionId', 'digest'].some(
+      (k) => review[k] !== request[k] || progress[k] !== request[k]
+    )
+  )
+    return false;
+  return (
+    request.kind === 'undo'
+      ? ['undo-preview-ready', 'held-for-review']
+      : ['model-applied', 'held-for-review']
+  ).includes(progress.status);
+}

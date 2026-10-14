@@ -4,7 +4,8 @@
     modelConversationActions,
     mergeModelReviews,
     modelOperationActive,
-    mergeModelProgress
+    mergeModelProgress,
+    modelProgressComplete
   } from '$lib/home/chat-model-state.js';
   import { onMount, tick } from 'svelte';
   import { mergeRecordActions } from '$lib/home/chat-record-state.js';
@@ -35,7 +36,6 @@
   let modelErrors: Record<string, string> = $state({});
   let modelRefs: any[] = $state([]);
   let modelPoll: any = null;
-  const modelDone = new Set<string>();
   let canSaveRecords = $state(false),
     savingId = $state('');
   let saveErrors: Record<string, string> = $state({});
@@ -246,7 +246,6 @@
           ...modelRefs.filter((r) => r.actionId !== ref.actionId || r.kind !== ref.kind),
           ref
         ];
-        modelDone.delete(ref.actionId + '/' + ref.kind);
         try {
           localStorage.setItem(key + ':model-requests', JSON.stringify(modelRefs));
         } catch {}
@@ -274,14 +273,19 @@
     try {
       for (const ref of modelRefs
         .filter(
-          (r) => r.conversationId === conversationId && !modelDone.has(r.actionId + '/' + r.kind)
+          (r) =>
+            r.conversationId === conversationId &&
+            !modelProgressComplete(
+              modelReviews.find(
+                (review) => review.actionId === r.actionId && review.digest === r.digest
+              ),
+              r
+            )
         )
         .slice(0, 3)) {
         const result = await modelClient(ref, ref.kind === 'undo' ? 'undo-status' : 'status');
         if (!result) continue;
         modelResult(ref, result, ref.kind === 'undo');
-        if (['model-applied', 'held-for-review', 'undo-preview-ready'].includes(result.status))
-          modelDone.add(ref.actionId + '/' + ref.kind);
       }
     } catch (e) {
       if (generation === reader.generation && !disposed)
@@ -495,7 +499,6 @@
     modelBusy = null;
     modelPoll = null;
     modelRefs = [];
-    modelDone.clear();
     modelErrors = {};
     resumedRecords.clear();
     saveErrors = {};
