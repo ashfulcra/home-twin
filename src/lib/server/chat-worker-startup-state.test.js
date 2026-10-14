@@ -7,6 +7,7 @@ const transport = vi.hoisted(() => ({ realListeners: 0, closed: 0 }));
 vi.mock('node:http', () => ({
   createServer: () => ({
     once() {},
+    /** @param {number} _port @param {string} _host @param {()=>void} ready */
     listen(_port, _host, ready) {
       ready();
     },
