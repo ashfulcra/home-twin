@@ -82,6 +82,8 @@ Use the hosted Layout 2D/3D switch to explore synthetic starters or interview dr
 
 Use Find records for system, provider/trade, model or care-task words. Equipment results show actual completed service and recorded provider, while history and schedules keep their own status/date. Open source links before resolving uncertainty. No match or missing date/contact stays unknown; do not turn it into a negative home fact. Search contains only the current authenticated home records, not held proposals or private agent journals.
 
+For manufacturer/model matching and historical work found in originals, read [manufacturer care references](../../../docs/source-intake.md#manufacturer-care-references). Its private review record separates document applicability, captured past work and current verification.
+
 ## Changed original evidence
 
 For the private verification-record recipe and conditional version reuse, read [source versions and coverage](../../../docs/source-version-audits.md). Keep current-file, history, whole-original and recipient coverage separate; omitted history is unknown metadata rather than a failed read.

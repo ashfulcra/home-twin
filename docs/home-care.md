@@ -2,6 +2,8 @@
 
 All maintainable systems and household tasks can be recorded. System placeholders are not verified equipment. A provider's name/trade/contact and each completed maintenance visit retain source or authenticated contributor evidence. An unknown last-service date never means “never serviced.”
 
+For manufacturer advice and past work found in source originals, use the [manufacturer evidence review](source-intake.md#manufacturer-care-references). Match document applicability and preserve historical receipts separately from current service or restore verification.
+
 The Care UI looks up plumber/electrician/roofing contacts and matching equipment service/provider records. It is evidence lookup, not a general-purpose language model. Equipment links open the associated dashboard record; original document links open the source.
 
 Add `contact`, `schedule` or `task-completion` contributions through the authenticated API/UI. Contact uses `value` (name), `field` (trade), optional phone/email/text. Schedule uses `value` (title), `field` (`chore` or `maintenance`), explicit `dueAt`, optional assignee/entityId/text. Completion uses scheduleId, actual performedAt and text. Maintenance accepts optional contactId referring to a recorded contact. Dates and recorders are distinct. Retrying the same contribution ID has one effect.
