@@ -127,6 +127,8 @@ Record actual versus synthetic results and concrete access/evidence blockers. Ow
 
 ## Recovery and operating bounds
 
+For evidence rechecks and private handoff preparation, use [source versions and coverage](source-version-audits.md). Exact checksum/version provenance does not accept a fact, verify physical geometry or grant recipient access.
+
 Stable conversation/turn/upload/request IDs preserve retries. Browser disconnect keeps a job running; Stop cancels subsequent work. Restart marks interrupted turns without automatically restarting them. Before restarting an existing worker, verify terminal turn journals, no active record/model/source jobs, no live lock and coherent native publication state. Readiness alone is not idle proof.
 
 A lost Save reply retains its exact request and offers **Continue verification**. Uncertain native/cloud writes use exact readback, not a second publication. Only an authoritative inactive unsaved or terminal-held source request offers **Review file again**; a new review needs a new Save. Accepted home refresh preserves the composer/conversation. Originals, prior source versions, construction overrides, immutable decisions and contribution IDs remain intact.

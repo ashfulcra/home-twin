@@ -84,6 +84,8 @@ Use Find records for system, provider/trade, model or care-task words. Equipment
 
 ## Changed original evidence
 
+For the private verification-record recipe and conditional version reuse, read [source versions and coverage](../../../docs/source-version-audits.md). Keep current-file, history, whole-original and recipient coverage separate; omitted history is unknown metadata rather than a failed read.
+
 Use the audited cycle command above with the same verified root and existing state to include current original-source checksums in stable private work. Compare changed originals with accepted dependent facts before creating contributions or review decisions. Missing checksums require a first inspected baseline; missing/revoked reads are blockers, not proof the original is unchanged. Do not automatically replace facts or geometry, rewrite stored checksum evidence, or borrow a contributor token. Limits are 100 sources and 10 MiB per original. The audit reads registered attachment authors through current shares; it grants nothing. The existing publication protocol remains a separate explicit action.
 
 ### Join request discovery

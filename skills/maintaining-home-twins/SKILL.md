@@ -7,6 +7,8 @@ description: Use when a user wants to start or improve a home digital twin in Fu
 
 Build a useful memory of the home before pursuing exact geometry. A home without a floor plan can already answer equipment, provider and service-history questions. Rooms, plans and dimensions remain correctable, with estimated/scanned/measured accuracy visible.
 
+For evidence rechecks or a private source handoff, read [source versions and coverage](../../docs/source-version-audits.md). It describes exact account/path/version/checksum receipts, unchanged-version reuse, changed-source review and unknown history; bounded checks do not prove archive, physical or recipient access.
+
 For accepted records or contributions, read [data-contract.md](references/data-contract.md). Use the matching Home Twin repository's synthetic `examples/home.json` and `scripts/home-agent.mjs`; never copy a real household into a public fixture. Validate and reconcile working copies before publishing.
 
 For account setup, joining, recovery or maintainer handoff, read [fulcra-workflow.md](references/fulcra-workflow.md). Named-home sign-in automatically submits an access request; a confirmed request share shows a pending page. Owners approve access in Household without an agent. An optional waiting-agent prompt checks approval in the applicant's own account. Owners read private canonical records; members read curated publications using their own accounts. One maintainer publishes accepted snapshots. Membership and a live Fulcra share are both required. Contribution return sharing and optional mesh require separate consents.
