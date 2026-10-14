@@ -1,5 +1,6 @@
 <script lang="ts">
   import { modelSavedNotifier } from '$lib/home/chat-home-refresh.js';
+  import HomeSourceSave from './HomeSourceSave.svelte';
   import HomeModelReview from './HomeModelReview.svelte';
   import {
     modelConversationActions,
@@ -31,7 +32,7 @@
   let turns: any[] = $state([]),
     events: any[] = $state([]),
     pending: any = $state(null),
-    callerId = '';
+    callerId = $state('');
   let recordActions: any[] = $state([]);
   let modelReviews: any[] = $state([]);
   let canReviewModel = $state(false),
@@ -40,6 +41,7 @@
   let modelErrors: Record<string, string> = $state({});
   let modelRefs: any[] = $state([]);
   let modelPoll: any = null;
+  let canSaveSources = $state(false);
   let canSaveRecords = $state(false),
     savingId = $state('');
   let saveErrors: Record<string, string> = $state({});
@@ -89,6 +91,7 @@
       )
         throw new Error('This request belongs to an earlier chat context.');
       if (r.status === 403 && writeOnly) {
+        canSaveSources = false;
         canSaveRecords = false;
         recordActions = [];
         modelReviews = [];
@@ -102,6 +105,7 @@
         modelReviews = [];
         canReviewModel = false;
         canApplyModel = false;
+        canSaveSources = false;
         canSaveRecords = false;
         errorMessage =
           r.status === 401
@@ -182,6 +186,7 @@
       key = 'home-chat:' + home.id + ':' + callerId;
       available = value.available === true;
       canUpload = value.uploads === true;
+      canSaveSources = value.sourceActions === true;
       canSaveRecords = value.recordActions === true;
       canReviewModel = value.modelReviews === true;
       canApplyModel = value.modelActions === true;
@@ -207,6 +212,22 @@
           : [];
       } catch {
         modelRefs = [];
+      }
+      try {
+        const savedSources = JSON.parse(localStorage.getItem(key + ':added-sources') ?? '[]');
+        addedSources = Array.isArray(savedSources)
+          ? savedSources
+              .slice(0, 30)
+              .filter(
+                (s: any) =>
+                  s &&
+                  /^evidence-[a-f0-9-]{36}$/.test(s.id) &&
+                  typeof s.title === 'string' &&
+                  s.title.length <= 500
+              )
+          : [];
+      } catch {
+        addedSources = [];
       }
       reader.select(conversationId);
       checking = false;
@@ -497,6 +518,9 @@
         sourceId = result.sourceId;
         if (!addedSources.some((s) => s.id === sourceId))
           addedSources.push({ id: sourceId, title: file.name });
+        try {
+          localStorage.setItem(key + ':added-sources', JSON.stringify(addedSources.slice(-30)));
+        } catch {}
         uploadNotice = file.name + ' is saved and attached.';
       } else
         uploadNotice =
@@ -511,6 +535,17 @@
       uploading = false;
       field.value = '';
     }
+  }
+  function sourceRequest(operation: string, value: any) {
+    return response(
+      '/api/home/chat/source-actions',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ operation, value })
+      },
+      true
+    );
   }
   async function stop() {
     try {
@@ -672,6 +707,7 @@
           {review}
           loadPreview={modelPreview}
           canApply={canApplyModel}
+          canSaveFile={canSaveSources}
           apply={(r) => actModel(r)}
           undo={(r) => actModel(r, true)}
           actionBusy={running || !!modelBusyId}
@@ -730,6 +766,16 @@
       {uploadNotice} · {uploadPercent}%
       <button onclick={() => uploadController?.abort()}>Pause upload</button>
     </p>{:else if uploadNotice}<p role="status" class="notice">{uploadNotice}</p>{/if}
+  {#if canSaveSources && sourceId && addedSources.some((s: any) => s.id === sourceId)}
+    <HomeSourceSave
+      homeId={home.id}
+      {callerId}
+      {sourceId}
+      enabled={canSaveSources}
+      request={sourceRequest}
+      onSaved={onModelSaved}
+    />
+  {/if}
   {#if errorMessage}<p class="notice" role="alert">
       {errorMessage}
       <button

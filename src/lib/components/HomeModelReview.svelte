@@ -3,6 +3,7 @@
     review,
     loadPreview,
     canApply = false,
+    canSaveFile = false,
     apply = async () => {},
     undo = async () => {},
     actionBusy = false,
@@ -11,6 +12,7 @@
     review: any;
     loadPreview: (review: any) => Promise<any>;
     canApply?: boolean;
+    canSaveFile?: boolean;
     apply?: (review: any) => Promise<any>;
     undo?: (review: any) => Promise<any>;
     actionBusy?: boolean;
@@ -116,8 +118,10 @@
       >{/if}
   {/if}
   {#if !applied && sourceAdmissionRequired}<p role="status">
-      Save a home record using the supporting file, then ask for a fresh model proposal. The file is
-      available in chat; it has not yet been added to the home's accepted records.
+      {#if canSaveFile}Select the supporting file in chat and save it to home records, then ask for
+        a fresh model proposal.{:else}The supporting file must be saved to home records before this
+        change can be applied. File saving is unavailable in this chat.{/if} The file is available in
+      chat; it has not yet been added to the home's accepted records.
     </p>{/if}
   {#if review.undo?.status === 'preparing-model-undo'}<p role="status">
       Preparing an undo preview…

@@ -67,11 +67,25 @@ test('a source awaiting admission explains the next step and does not offer an u
     props: {
       review: { ...review, sourceAdmission: { required: true, sourceIds: ['uploaded'] } },
       canApply: true,
+      canSaveFile: true,
       loadPreview: async () => null
     }
   }).body;
-  expect(body).toContain('Save a home record using the supporting file');
+  expect(body).toContain('Select the supporting file in chat');
   expect(body).toContain('Preview change');
+  expect(body).not.toContain('Apply change');
+});
+
+test('disabled source saving does not instruct the owner to use an absent Save button', () => {
+  const body = render(HomeModelReview, {
+    props: {
+      review: { ...review, sourceAdmission: { required: true, sourceIds: ['uploaded'] } },
+      canApply: true,
+      loadPreview: async () => null
+    }
+  }).body;
+  expect(body).toContain('File saving is unavailable in this chat');
+  expect(body).not.toContain('Select the supporting file in chat');
   expect(body).not.toContain('Apply change');
 });
 
@@ -101,5 +115,5 @@ test('source admission guidance never hides reconciliation or rewrites a histori
   }).body;
   expect(saved).toContain('Applied to your home');
   expect(saved).toContain('Review undo');
-  expect(saved).not.toContain('Save a home record using the supporting file');
+  expect(saved).not.toContain('Select the supporting file in chat');
 });
