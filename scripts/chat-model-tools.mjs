@@ -4,7 +4,7 @@ export const chatModelDefinition = {
   type: 'function',
   name: 'prepare_model_patch',
   description:
-    'Prepare a local wall/opening dimension correction for owner review. Read exact saved wall IDs/values and supporting sources first. This never applies geometry; no adds, deletes, room moves or global transforms.',
+    'Prepare a local wall/opening dimension correction for owner review. Read exact saved wall IDs/values and supporting sources first. If sourceAdmission.required is returned, explain that the supporting file must first be accepted into home records through the existing reviewed record-save or maintainer workflow, then prepare a fresh proposal against the new home revision. Never invent a record or claim Apply is ready before that. This never applies geometry; no adds, deletes, room moves or global transforms.',
   strict: true,
   parameters: {
     type: 'object',

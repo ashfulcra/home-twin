@@ -512,3 +512,32 @@ test('native publisher reads only an exact finalized owner decision and no raw h
   f.setRole('contributor');
   await expect(f.patch.readApproved(input, f.request)).rejects.toThrow(/owner/);
 });
+
+test('verified uploaded sources are distinguished from accepted home sources before offering Apply', async () => {
+  const f = await fixture();
+  f.home.sources = [];
+  const a = await f.patch.prepare(modelPatchDraft(), f.context, f.request);
+  expect(a.sourceAdmission).toEqual({ required: true, sourceIds: ['manual'] });
+  expect(
+    (
+      await f.patch.preview(
+        { conversationId: a.conversationId, actionId: a.actionId, digest: a.digest },
+        f.request
+      )
+    ).review.sourceAdmission
+  ).toEqual(a.sourceAdmission);
+  const before = await readFile(await proposalFile(f, a), 'utf8');
+  f.home.sources = [{ id: 'manual', sha256: 'a'.repeat(64) }];
+  f.home.revision++;
+  const old = (await f.patch.list(f.context.conversationId, f.request))[0];
+  expect(old.status).toBe('stale-model');
+  expect(old.sourceAdmission).toEqual({ required: false, sourceIds: [] });
+  expect(await readFile(await proposalFile(f, a), 'utf8')).toBe(before);
+  const fresh = await f.patch.prepare(
+    modelPatchDraft(),
+    { ...f.context, turnId: numbered(801) },
+    f.request
+  );
+  expect(fresh.status).toBe('needs-model-review');
+  expect(fresh.sourceAdmission).toEqual({ required: false, sourceIds: [] });
+});

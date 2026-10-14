@@ -22,6 +22,7 @@
       : review.note
   );
   let applied = $derived(review.progress?.status === 'model-applied');
+  let sourceAdmissionRequired = $derived(review.sourceAdmission?.required === true);
   let held = $derived(review.progress?.status === 'held-for-review');
   let processing = $derived(review.progress?.operation?.active === true);
   let preview: any = $state(null),
@@ -101,7 +102,7 @@
         disabled={actionBusy || review.undo?.operation?.active}
         onclick={() => undo(review)}>Review undo</button
       >
-    {:else if !held}<button
+    {:else if !held && (!sourceAdmissionRequired || review.progress?.requestSaved)}<button
         type="button"
         disabled={actionBusy ||
           processing ||
@@ -114,6 +115,10 @@
             : 'Apply change'}</button
       >{/if}
   {/if}
+  {#if !applied && sourceAdmissionRequired}<p role="status">
+      Save a home record using the supporting file, then ask for a fresh model proposal. The file is
+      available in chat; it has not yet been added to the home's accepted records.
+    </p>{/if}
   {#if review.undo?.status === 'preparing-model-undo'}<p role="status">
       Preparing an undo preview…
     </p>{:else if review.undo?.status === 'undo-preview-ready'}<p role="status">

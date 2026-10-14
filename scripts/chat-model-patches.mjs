@@ -206,6 +206,10 @@ export async function createChatModelPatches({
     return j;
   }
   async function view(/** @type {any} */ j, /** @type {any} */ a) {
+    const unacceptedSources = j.proposal.draft.sourceIds.filter(
+      (/** @type {string} */ id) =>
+        (a.home.sources ?? []).filter((/** @type {any} */ source) => source.id === id).length !== 1
+    );
     const decision = await readDecision(
       join(
         directory,
@@ -225,6 +229,7 @@ export async function createChatModelPatches({
       note: j.proposal.draft.note,
       sourceIds: [...j.proposal.draft.sourceIds],
       sourceChecks: structuredClone(j.proposal.sources),
+      sourceAdmission: { required: unacceptedSources.length > 0, sourceIds: unacceptedSources },
       baseRevision: j.proposal.baseline.revision,
       changes: structuredClone(j.proposal.changes),
       majorReviewRequired: true,

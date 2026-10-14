@@ -61,3 +61,45 @@ test('inverse card describes Undo without exposing its internal action identifie
   expect(body).toContain('Undo the saved model change.');
   expect(body).not.toContain('Undo approved model change 22222222');
 });
+
+test('a source awaiting admission explains the next step and does not offer an unusable Apply', () => {
+  const body = render(HomeModelReview, {
+    props: {
+      review: { ...review, sourceAdmission: { required: true, sourceIds: ['uploaded'] } },
+      canApply: true,
+      loadPreview: async () => null
+    }
+  }).body;
+  expect(body).toContain('Save a home record using the supporting file');
+  expect(body).toContain('Preview change');
+  expect(body).not.toContain('Apply change');
+});
+
+test('source admission guidance never hides reconciliation or rewrites a historical saved result', () => {
+  const pending = render(HomeModelReview, {
+    props: {
+      review: {
+        ...review,
+        sourceAdmission: { required: true, sourceIds: ['uploaded'] },
+        progress: { status: 'publication-pending', requestSaved: true }
+      },
+      canApply: true,
+      loadPreview: async () => null
+    }
+  }).body;
+  expect(pending).toContain('Continue verification');
+  const saved = render(HomeModelReview, {
+    props: {
+      review: {
+        ...review,
+        sourceAdmission: { required: true, sourceIds: ['uploaded'] },
+        progress: { status: 'model-applied' }
+      },
+      canApply: true,
+      loadPreview: async () => null
+    }
+  }).body;
+  expect(saved).toContain('Applied to your home');
+  expect(saved).toContain('Review undo');
+  expect(saved).not.toContain('Save a home record using the supporting file');
+});
