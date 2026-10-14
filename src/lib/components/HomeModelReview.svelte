@@ -1,6 +1,24 @@
 <script lang="ts">
-  let { review, loadPreview }: { review: any; loadPreview: (review: any) => Promise<any> } =
-    $props();
+  let {
+    review,
+    loadPreview,
+    canApply = false,
+    apply = async () => {},
+    undo = async () => {},
+    actionBusy = false,
+    actionError = ''
+  }: {
+    review: any;
+    loadPreview: (review: any) => Promise<any>;
+    canApply?: boolean;
+    apply?: (review: any) => Promise<any>;
+    undo?: (review: any) => Promise<any>;
+    actionBusy?: boolean;
+    actionError?: string;
+  } = $props();
+  let applied = $derived(review.progress?.status === 'model-applied');
+  let held = $derived(review.progress?.status === 'held-for-review');
+  let processing = $derived(review.progress?.operation?.active === true);
   let preview: any = $state(null),
     busy = $state(false),
     failure = $state('');
@@ -61,7 +79,44 @@
         {fieldNames[change.field] ?? 'Dimension'}: {change.before} → {change.after} feet
       </li>{/each}
   </ul>
-  <p class="model-status">Not applied to your home.</p>
+  <p class="model-status" role="status">
+    {applied
+      ? 'Applied to your home.'
+      : held
+        ? 'The home or sources need a fresh review.'
+        : review.progress?.status === 'checking-model-sources'
+          ? 'Checking sources in the background…'
+          : review.progress?.status === 'publication-pending'
+            ? 'Waiting to confirm the saved change.'
+            : 'Not applied to your home.'}
+  </p>
+  {#if canApply}
+    {#if applied}<button
+        type="button"
+        disabled={actionBusy || review.undo?.operation?.active}
+        onclick={() => undo(review)}>Review undo</button
+      >
+    {:else if !held}<button
+        type="button"
+        disabled={actionBusy ||
+          processing ||
+          (!review.progress?.requestSaved && (!preview || review.status === 'stale-model'))}
+        onclick={() => apply(review)}
+        >{processing
+          ? 'Checking…'
+          : review.progress?.requestSaved
+            ? 'Continue verification'
+            : 'Apply change'}</button
+      >{/if}
+  {/if}
+  {#if review.undo?.status === 'preparing-model-undo'}<p role="status">
+      Preparing an undo preview…
+    </p>{:else if review.undo?.status === 'undo-preview-ready'}<p role="status">
+      Undo preview ready below. Review it before applying.
+    </p>{:else if review.undo?.status === 'held-for-review'}<p role="status">
+      Undo needs a fresh model review.
+    </p>{/if}
+  {#if actionError}<p role="alert">{actionError}</p>{/if}
   {#if review.sourceIds?.length}<p class="sources">
       Sources were checked when this proposal was prepared.
     </p>{/if}

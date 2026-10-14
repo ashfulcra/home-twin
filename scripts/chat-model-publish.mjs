@@ -418,7 +418,11 @@ export function createChatModelPublisher({
     }
   }
   /** Read-only cloud operation; creates a distinct private inverse proposal, never approval or upload. */
-  async function prepareRollback(/** @type {any} */ input, /** @type {any} */ request) {
+  async function prepareRollback(
+    /** @type {any} */ input,
+    /** @type {any} */ request,
+    /** @type {any} */ expectedBaseline = undefined
+  ) {
     let locked = false;
     const lock = join(directory, '.cycle.lock');
     try {
@@ -457,6 +461,15 @@ export function createChatModelPublisher({
         )
       )
         throw Error('Accepted target model or construction choice changed');
+      const preparedBase = {
+        revision: current.home.revision,
+        fileVersion: current.baselineVersion,
+        homeDigest: hash(current.home),
+        modelDigest: hash(current.home.reconstruction.buildingModel),
+        binding: review.proposal.binding
+      };
+      if (expectedBaseline !== undefined && !same(expectedBaseline, preparedBase))
+        throw Error('Queued inverse baseline differs');
       for (const source of intent.review.sources) {
         const before =
             intent.target.sources?.filter((/** @type {any} */ s) => s.id === source.id) ?? [],

@@ -191,7 +191,7 @@ export async function createChatWorker({
           homeId: scope.homeId
         });
       }
-      if (['apply-model', 'model-status'].includes(request.action)) {
+      if (['apply-model', 'model-status', 'undo-model', 'undo-status'].includes(request.action)) {
         if (!selectedJobs) throw Error('Unsupported model action');
         if (scope.role !== 'maintainer' || scope.principalId !== scope.ownerUserId)
           throw Error('Current designated owner required for model actions');
@@ -199,10 +199,15 @@ export async function createChatWorker({
         await journal.readConversation(request.input.conversationId);
         const current = { token: request.token, homeId: scope.homeId },
           input = request.input;
-        const key = jobKey(scope, input.conversationId) + '/' + input.actionId;
-        if (request.action === 'model-status')
+        const undo = ['undo-model', 'undo-status'].includes(request.action);
+        const method = undo
+          ? { request: 'requestUndo', status: 'undoStatus', run: 'runUndo' }
+          : { request: 'request', status: 'status', run: 'run' };
+        const key =
+          jobKey(scope, input.conversationId) + '/' + input.actionId + (undo ? '/undo' : '');
+        if (['model-status', 'undo-status'].includes(request.action))
           return {
-            ...(await selectedJobs.status(input, current)),
+            ...(await selectedJobs[method.status](input, current)),
             operation: { active: modelWork.has(key) }
           };
         if (active.has(jobKey(scope, input.conversationId)))
@@ -215,7 +220,10 @@ export async function createChatWorker({
           )
             throw Error('Changed model request intent');
           await old.admission;
-          return { ...(await selectedJobs.status(input, current)), operation: { active: true } };
+          return {
+            ...(await selectedJobs[method.status](input, current)),
+            operation: { active: true }
+          };
         }
         if (modelWork.size >= 8) throw Error('Model worker busy; retry the same request later');
         /** @type {any} */ const job = {
@@ -225,10 +233,10 @@ export async function createChatWorker({
         };
         modelWork.set(key, job);
         try {
-          job.admission = selectedJobs.request(input, current);
+          job.admission = selectedJobs[method.request](input, current);
           await job.admission;
-          const saved = await selectedJobs.status(input, current);
-          if (['model-applied', 'held-for-review'].includes(saved.status)) {
+          const saved = await selectedJobs[method.status](input, current);
+          if (['model-applied', 'undo-preview-ready', 'held-for-review'].includes(saved.status)) {
             modelWork.delete(key);
             return { ...saved, operation: { active: false } };
           }
@@ -237,7 +245,7 @@ export async function createChatWorker({
             .catch(() => {})
             .then(async () => {
               try {
-                return await selectedJobs.run(input, current);
+                return await selectedJobs[method.run](input, current);
               } catch {
                 return { status: 'model-unconfirmed' };
               } finally {
@@ -453,6 +461,14 @@ export async function createChatWorker({
                       }
                     }))
                   : []
+              }
+            : {}),
+          ...(selectedJobs && scope.role === 'maintainer' && scope.principalId === scope.ownerUserId
+            ? {
+                modelRequests: await selectedJobs.requests(request.conversationId, {
+                  token: request.token,
+                  homeId: scope.homeId
+                })
               }
             : {}),
           ...(selectedReviews

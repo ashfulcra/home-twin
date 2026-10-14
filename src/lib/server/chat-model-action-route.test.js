@@ -4,6 +4,8 @@ vi.mock('$lib/server/home-access.js', () => ({ resolveHome: mocks.resolve }));
 vi.mock('$lib/server/chat-service.js', () => ({ callChatService: mocks.call }));
 import { POST as apply } from '../../routes/api/home/chat/model-actions/+server.js';
 import { POST as status } from '../../routes/api/home/chat/model-status/+server.js';
+import { POST as undo } from '../../routes/api/home/chat/model-undo/+server.js';
+import { POST as undoStatus } from '../../routes/api/home/chat/model-undo-status/+server.js';
 const owner = '33333333-3333-4333-8333-333333333333',
   input = {
     conversationId: '11111111-1111-4111-8111-111111111111',
@@ -29,7 +31,9 @@ beforeEach(() => {
 test('model Apply and status relay only the current owner exact identifiers with private caching', async () => {
   for (const [route, action] of /** @type {Array<[any,string]>} */ ([
     [apply, 'apply-model'],
-    [status, 'model-status']
+    [status, 'model-status'],
+    [undo, 'undo-model'],
+    [undoStatus, 'undo-status']
   ])) {
     const r = await route(event(input));
     expect(r.headers.get('cache-control')).toBe('private, no-store');
@@ -37,7 +41,7 @@ test('model Apply and status relay only the current owner exact identifiers with
   }
 });
 test('anonymous contributor viewer and another maintainer cannot request or poll model actions', async () => {
-  for (const route of [apply, status]) {
+  for (const route of [apply, status, undo, undoStatus]) {
     await expect(route(event(input, false))).rejects.toMatchObject({ status: 401 });
     for (const role of ['viewer', 'contributor', 'maintainer']) {
       mocks.resolve.mockResolvedValue({
@@ -53,7 +57,7 @@ test('anonymous contributor viewer and another maintainer cannot request or poll
   expect(mocks.call).not.toHaveBeenCalled();
 });
 test('model requests reject client authority, missing keys and malformed operation digests', async () => {
-  for (const route of [apply, status])
+  for (const route of [apply, status, undo, undoStatus])
     for (const body of [
       { ...input, root: '/Elsewhere/twin' },
       { ...input, role: 'maintainer' },

@@ -356,3 +356,22 @@ test('owner role lost before bound inverse admission cannot persist a contributo
   expect((await f.publisher.prepareRollback(f.input, f.request)).status).toBe('held-for-review');
   expect(await f.patch.list(f.input.conversationId, f.request)).toHaveLength(1);
 });
+import { createHash } from 'node:crypto';
+import { canonicalJSON } from '../home/canonical-json.js';
+test('queued Undo rejects a changed expected baseline before allocating an inverse proposal', async () => {
+  const f = await fixture();
+  await f.publisher.publish(f.input, f.request);
+  const home = f.home(),
+    sha = (/** @type {any} */ v) => createHash('sha256').update(canonicalJSON(v)).digest('hex');
+  const expected = {
+    revision: home.revision - 1,
+    fileVersion: 'v8',
+    homeDigest: sha(home),
+    modelDigest: sha(home.reconstruction.buildingModel),
+    binding: { homeId: 'example', principalId: owner, ownerUserId: owner, root: '/Example/twin' }
+  };
+  expect((await f.publisher.prepareRollback(f.input, f.request, expected)).status).toBe(
+    'held-for-review'
+  );
+  expect(await f.patch.list(f.input.conversationId, f.request)).toHaveLength(1);
+});

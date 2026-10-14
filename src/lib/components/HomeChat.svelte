@@ -1,5 +1,11 @@
 <script lang="ts">
   import HomeModelReview from './HomeModelReview.svelte';
+  import {
+    modelConversationActions,
+    mergeModelReviews,
+    modelOperationActive,
+    mergeModelProgress
+  } from '$lib/home/chat-model-state.js';
   import { onMount, tick } from 'svelte';
   import { mergeRecordActions } from '$lib/home/chat-record-state.js';
   import { recordCard } from '$lib/home/chat-record-card.js';
@@ -23,7 +29,13 @@
     callerId = '';
   let recordActions: any[] = $state([]);
   let modelReviews: any[] = $state([]);
-  let canReviewModel = $state(false);
+  let canReviewModel = $state(false),
+    canApplyModel = $state(false),
+    modelBusy: any = $state(null);
+  let modelErrors: Record<string, string> = $state({});
+  let modelRefs: any[] = $state([]);
+  let modelPoll: any = null;
+  const modelDone = new Set<string>();
   let canSaveRecords = $state(false),
     savingId = $state('');
   let saveErrors: Record<string, string> = $state({});
@@ -68,6 +80,7 @@
         recordActions = [];
         modelReviews = [];
         canReviewModel = false;
+        canApplyModel = false;
         void start();
       } else if (r.status === 401 || r.status === 403) {
         turns = [];
@@ -75,6 +88,7 @@
         recordActions = [];
         modelReviews = [];
         canReviewModel = false;
+        canApplyModel = false;
         canSaveRecords = false;
         reader.select('');
         available = false;
@@ -84,6 +98,12 @@
     return value;
   }
   const reader = chatConversationReader(response);
+  let modelBusyId = $derived(
+    modelOperationActive(modelBusy, { conversationId, generation: reader.generation })
+      ? modelBusy.actionId
+      : ''
+  );
+
   async function refresh() {
     if (disposed || checking || !conversationId) return;
     checking = true;
@@ -94,9 +114,10 @@
       if (!value || disposed) return;
       turns = value.turns;
       recordActions = mergeRecordActions(recordActions, value.actions ?? [], conversationId);
-      modelReviews = (value.modelReviews ?? []).filter(
-        (a: any) => a.conversationId === conversationId
-      );
+      modelReviews = mergeModelReviews(modelReviews, value.modelReviews ?? [], conversationId);
+      if (canApplyModel && Array.isArray(value.modelRequests))
+        modelRefs = value.modelRequests.filter((r: any) => r.conversationId === conversationId);
+      void pollModelProgress();
       for (const item of value.events) {
         if (!events.some((e) => e.cursor === item.cursor)) events.push(item);
       }
@@ -142,12 +163,29 @@
       canUpload = value.uploads === true;
       canSaveRecords = value.recordActions === true;
       canReviewModel = value.modelReviews === true;
+      canApplyModel = value.modelActions === true;
       try {
         conversationId = localStorage.getItem(key) ?? '';
       } catch {}
       if (!/^[a-f0-9-]{36}$/i.test(conversationId)) {
         conversationId = crypto.randomUUID();
         remember();
+      }
+      try {
+        const refs = JSON.parse(localStorage.getItem(key + ':model-requests') ?? '[]');
+        modelRefs = Array.isArray(refs)
+          ? refs
+              .slice(0, 100)
+              .filter(
+                (r: any) =>
+                  r.conversationId === conversationId &&
+                  /^[a-f0-9-]{36}$/.test(r.actionId) &&
+                  /^[a-f0-9]{64}$/.test(r.digest) &&
+                  ['apply', 'undo'].includes(r.kind)
+              )
+          : [];
+      } catch {
+        modelRefs = [];
       }
       reader.select(conversationId);
       checking = false;
@@ -156,6 +194,100 @@
     } catch (e) {
       ready = true;
       errorMessage = e instanceof Error ? e.message : 'Chat is temporarily unavailable.';
+    }
+  }
+  const modelClient = modelConversationActions(
+    (url: string, options: RequestInit) => response(url, options, true),
+    () => ({ conversationId, generation: reader.generation, enabled: canApplyModel, disposed })
+  );
+  function modelResult(action: any, result: any, undo = false) {
+    modelReviews = modelReviews.map((r) =>
+      r.actionId === action.actionId && r.digest === action.digest
+        ? {
+            ...r,
+            ...(undo
+              ? { undo: mergeModelProgress(r.undo, result) }
+              : { progress: mergeModelProgress(r.progress, result) })
+          }
+        : r
+    );
+    if (result.review) {
+      const rows = [
+        ...modelReviews.filter((r) => r.actionId !== result.review.actionId),
+        result.review
+      ];
+      modelReviews = mergeModelReviews(modelReviews, rows, conversationId);
+    }
+  }
+  async function actModel(action: any, undo = false) {
+    if (
+      !canApplyModel ||
+      disposed ||
+      running ||
+      modelBusyId ||
+      action.conversationId !== conversationId
+    )
+      return;
+    const generation = reader.generation;
+    modelBusy = { actionId: action.actionId, conversationId, generation };
+    modelErrors = { ...modelErrors, [action.actionId]: '' };
+    try {
+      const result = await modelClient(action, undo ? 'undo' : 'apply');
+      if (!result) return;
+      modelResult(action, result, undo);
+      if (result.requestSaved) {
+        const ref = {
+          conversationId: action.conversationId,
+          actionId: action.actionId,
+          digest: action.digest,
+          kind: undo ? 'undo' : 'apply'
+        };
+        modelRefs = [
+          ...modelRefs.filter((r) => r.actionId !== ref.actionId || r.kind !== ref.kind),
+          ref
+        ];
+        modelDone.delete(ref.actionId + '/' + ref.kind);
+        try {
+          localStorage.setItem(key + ':model-requests', JSON.stringify(modelRefs));
+        } catch {}
+      }
+    } catch (e) {
+      if (generation === reader.generation && !disposed)
+        modelErrors = {
+          ...modelErrors,
+          [action.actionId]:
+            e instanceof Error ? e.message : 'Could not confirm this request. Check again.'
+        };
+    } finally {
+      if (generation === reader.generation) modelBusy = null;
+    }
+  }
+  async function pollModelProgress() {
+    if (
+      modelOperationActive(modelPoll, { conversationId, generation: reader.generation }) ||
+      !canApplyModel ||
+      disposed
+    )
+      return;
+    const generation = reader.generation;
+    modelPoll = { conversationId, generation };
+    try {
+      for (const ref of modelRefs
+        .filter(
+          (r) => r.conversationId === conversationId && !modelDone.has(r.actionId + '/' + r.kind)
+        )
+        .slice(0, 3)) {
+        const result = await modelClient(ref, ref.kind === 'undo' ? 'undo-status' : 'status');
+        if (!result) continue;
+        modelResult(ref, result, ref.kind === 'undo');
+        if (['model-applied', 'held-for-review', 'undo-preview-ready'].includes(result.status))
+          modelDone.add(ref.actionId + '/' + ref.kind);
+      }
+    } catch (e) {
+      if (generation === reader.generation && !disposed)
+        errorMessage = e instanceof Error ? e.message : 'Could not check model progress.';
+    } finally {
+      if (generation === reader.generation) modelPoll = null;
     }
   }
   async function modelPreview(action: any) {
@@ -360,6 +492,11 @@
     if (savingId || running) return;
     recordActions = [];
     modelReviews = [];
+    modelBusy = null;
+    modelPoll = null;
+    modelRefs = [];
+    modelDone.clear();
+    modelErrors = {};
     resumedRecords.clear();
     saveErrors = {};
     conversationId = crypto.randomUUID();
@@ -443,10 +580,6 @@
             This reply couldn’t finish. You can try a new message.
           </p>{/if}
       </article>
-      {#if canReviewModel}{#each modelReviews.filter((a) => a.turnId === turn.input.turnId) as review (review.actionId)}<HomeModelReview
-            {review}
-            loadPreview={modelPreview}
-          />{/each}{/if}
       {#each recordActions.filter((a) => a.turnId === turn.input.turnId) as action (action.actionId)}
         {@const card = recordCard(action.draft, {
           ...home,
@@ -499,6 +632,15 @@
         </article>
       {/each}
     {/each}
+    {#if canReviewModel}{#each modelReviews as review (review.actionId)}<HomeModelReview
+          {review}
+          loadPreview={modelPreview}
+          canApply={canApplyModel}
+          apply={(r) => actModel(r)}
+          undo={(r) => actModel(r, true)}
+          actionBusy={running || !!modelBusyId}
+          actionError={modelErrors[review.actionId] ?? ''}
+        />{/each}{/if}
   </div>
   <form
     onsubmit={(e) => {

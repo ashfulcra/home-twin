@@ -72,15 +72,15 @@ export async function createChatModelJobs({ directory, authorize, reviewsFor, pu
     const reviews = reviewsFor(scope.homeId),
       publisher = publisherFor(scope.homeId);
     if (!reviews || !publisher) throw Error('Model actions unavailable');
-    return { scope, reviews, publisher };
+    return { scope, reviews, publisher, home: a.home, fileVersion: a.fileVersion };
   }
-  async function paths(/** @type {any} */ s, /** @type {any} */ i, create = false) {
+  async function paths(/** @type {any} */ s, /** @type {any} */ i, create = false, undo = false) {
     const home = join(directory, s.homeId),
       actor = join(home, s.principalId),
       conversation = join(actor, i.conversationId);
     for (const p of [directory, home, actor, conversation])
       if (!(await privateDir(p, create))) return null;
-    return { home, actor, path: join(conversation, i.actionId + '.json') };
+    return { home, actor, path: join(conversation, i.actionId + (undo ? '.undo.json' : '.json')) };
   }
   async function read(/** @type {string} */ p) {
     try {
@@ -124,13 +124,23 @@ export async function createChatModelJobs({ directory, authorize, reviewsFor, pu
     }
     await promote(p);
   }
-  function validate(/** @type {any} */ j, /** @type {any} */ s, /** @type {any} */ i) {
+  function validate(
+    /** @type {any} */ j,
+    /** @type {any} */ s,
+    /** @type {any} */ i,
+    undo = false
+  ) {
     const d = j?.intent;
     if (
       !exact(j, ['schema', 'intent', 'digest']) ||
       j.schema !== 1 ||
-      !exact(d, ['kind', 'binding', 'input', 'requestedAt']) ||
-      d.kind !== 'model-apply-request' ||
+      !exact(
+        d,
+        undo
+          ? ['kind', 'binding', 'input', 'requestedAt', 'baseline']
+          : ['kind', 'binding', 'input', 'requestedAt']
+      ) ||
+      d.kind !== (undo ? 'model-undo-request' : 'model-apply-request') ||
       !same(d.binding, binding(s)) ||
       !same(d.input, i) ||
       !exact(d.input, ['conversationId', 'actionId', 'digest']) ||
@@ -142,12 +152,17 @@ export async function createChatModelJobs({ directory, authorize, reviewsFor, pu
       throw Error('Model request integrity or owner scope differs');
     return j;
   }
-  async function retained(/** @type {any} */ p, /** @type {any} */ s, /** @type {any} */ i) {
+  async function retained(
+    /** @type {any} */ p,
+    /** @type {any} */ s,
+    /** @type {any} */ i,
+    undo = false
+  ) {
     let found = null;
     for (const stage of [false, true]) {
       const j = await read(p.path + (stage ? '.tmp' : ''));
       if (!j) continue;
-      validate(j, s, i);
+      validate(j, s, i, undo);
       if (found && !same(found.j, j)) throw Error('Conflicting staged model request');
       found ??= { j, stage };
     }
@@ -183,10 +198,10 @@ export async function createChatModelJobs({ directory, authorize, reviewsFor, pu
     }
     return !!found;
   }
-  async function load(/** @type {any} */ i, /** @type {any} */ a) {
-    const p = await paths(a.scope, i);
+  async function load(/** @type {any} */ i, /** @type {any} */ a, undo = false) {
+    const p = await paths(a.scope, i, false, undo);
     if (!p) throw Error('Saved human request required');
-    const old = await retained(p, a.scope, i);
+    const old = await retained(p, a.scope, i, undo);
     if (!old || old.stage) throw Error('Finalized human model request required');
     return { p, j: old.j };
   }
@@ -210,7 +225,177 @@ export async function createChatModelJobs({ directory, authorize, reviewsFor, pu
     await reauthorize(a, request);
     return shape(j, { ...result, approvalRecorded: review.approvalRecorded === true });
   }
+  function baseline(/** @type {any} */ a) {
+    if (
+      a.home?.id !== a.scope.homeId ||
+      a.home.ownerUserId !== a.scope.ownerUserId ||
+      !Number.isSafeInteger(a.home.revision) ||
+      typeof a.fileVersion !== 'string' ||
+      !a.fileVersion ||
+      Buffer.byteLength(JSON.stringify(a.home)) > 2 * 1024 * 1024
+    )
+      throw Error('Current bounded inverse baseline required');
+    return {
+      revision: a.home.revision,
+      fileVersion: a.fileVersion,
+      homeDigest: hash(a.home),
+      modelDigest: hash(a.home.reconstruction?.buildingModel),
+      binding: binding(a.scope)
+    };
+  }
+  async function inverseResult(/** @type {any} */ p, /** @type {any} */ j) {
+    let found = null;
+    for (const stage of [false, true]) {
+      const r = await read(p.path + '.result' + (stage ? '.tmp' : ''));
+      if (!r) continue;
+      if (
+        !exact(r, ['schema', 'intentDigest', 'inverse']) ||
+        r.schema !== 1 ||
+        r.intentDigest !== j.digest
+      )
+        throw Error('Undo result integrity differs');
+      input(r.inverse);
+      if (
+        r.inverse.conversationId !== j.intent.input.conversationId ||
+        r.inverse.actionId === j.intent.input.actionId ||
+        r.inverse.digest === j.intent.input.digest
+      )
+        throw Error('Distinct exact inverse required');
+      if (found && !same(found.r, r)) throw Error('Conflicting inverse result stage');
+      found ??= { r, stage };
+    }
+    return found;
+  }
+  async function undoStatusFor(
+    /** @type {any} */ a,
+    /** @type {any} */ p,
+    /** @type {any} */ j,
+    /** @type {any} */ request
+  ) {
+    /** @type {any} */ let result = { status: 'preparing-model-undo' };
+    const saved = await inverseResult(p, j);
+    if (await held(p, j)) result = { status: 'held-for-review' };
+    else if (saved && !saved.stage) {
+      const rows = await a.reviews.list(j.intent.input.conversationId, request),
+        review = rows.find(
+          (/** @type {any} */ x) =>
+            x.actionId === saved.r.inverse.actionId && x.digest === saved.r.inverse.digest
+        );
+      if (!review) throw Error('Exact inverse review unavailable');
+      result = { status: 'undo-preview-ready', review };
+    }
+    await reauthorize(a, request);
+    return shape(j, result);
+  }
   return {
+    async requests(/** @type {string} */ conversationId, /** @type {any} */ request) {
+      const a = await access(request),
+        rows = await a.reviews.list(conversationId, request),
+        out = [];
+      for (const row of rows) {
+        const i = input({
+          conversationId: row.conversationId,
+          actionId: row.actionId,
+          digest: row.digest
+        });
+        for (const undo of [false, true]) {
+          const p = await paths(a.scope, i, false, undo);
+          if (p && (await retained(p, a.scope, i, undo)))
+            out.push({ ...i, kind: undo ? 'undo' : 'apply' });
+        }
+      }
+      await reauthorize(a, request);
+      return out;
+    },
+    async requestUndo(/** @type {any} */ raw, /** @type {any} */ request) {
+      const i = input(raw),
+        a = await access(request);
+      let p = await paths(a.scope, i, false, true),
+        old = p ? await retained(p, a.scope, i, true) : null;
+      if (!old) {
+        await a.reviews.readApproved(i, request);
+        if ((await a.publisher.status(i, request)).status !== 'model-applied')
+          throw Error('Verified accepted model change required');
+        const now = await reauthorize(a, request);
+        if (!same(baseline(a), baseline(now)))
+          throw Error('Undo baseline changed during admission');
+        p = await paths(a.scope, i, true, true);
+      }
+      const location = p;
+      if (!location) throw Error('Undo request directory unavailable');
+      return withChatLock(join(location.actor, '.requests'), async () => {
+        old = await retained(location, a.scope, i, true);
+        const now = await reauthorize(a, request);
+        if (old) {
+          if (old.stage) await promote(location.path);
+          return undoStatusFor(now, location, old.j, request);
+        }
+        if (!same(baseline(a), baseline(now))) throw Error('Undo admission baseline changed');
+        const intent = {
+            kind: 'model-undo-request',
+            binding: binding(a.scope),
+            input: i,
+            requestedAt: new Date().toISOString(),
+            baseline: baseline(now)
+          },
+          j = { schema: 1, intent, digest: hash(intent) };
+        await save(location.path, j);
+        return undoStatusFor(now, location, j, request);
+      });
+    },
+    async undoStatus(/** @type {any} */ raw, /** @type {any} */ request) {
+      const i = input(raw),
+        a = await access(request),
+        { p, j } = await load(i, a, true);
+      return undoStatusFor(a, p, j, request);
+    },
+    async runUndo(/** @type {any} */ raw, /** @type {any} */ request) {
+      const i = input(raw),
+        a = await access(request),
+        { p, j } = await load(i, a, true);
+      return withChatLock(join(p.home, '.run'), async () => {
+        await reauthorize(a, request);
+        const old = await inverseResult(p, j);
+        if (old) {
+          if (old.stage)
+            await withChatLock(join(p.actor, '.requests'), async () => {
+              await reauthorize(a, request);
+              await promote(p.path + '.result');
+            });
+          return undoStatusFor(a, p, j, request);
+        }
+        if (await held(p, j)) return undoStatusFor(a, p, j, request);
+        let review = null;
+        try {
+          const now = await reauthorize(a, request);
+          if (!same(baseline(now), j.intent.baseline)) throw Error('Queued Undo baseline changed');
+          review = await a.publisher.prepareRollback(i, request, j.intent.baseline);
+          await reauthorize(a, request);
+          if (review?.status === 'held-for-review') review = null;
+        } catch {
+          review = null;
+        }
+        await withChatLock(join(p.actor, '.requests'), async () => {
+          if (!review) {
+            if (!(await held(p, j)))
+              await save(p.path + '.held', {
+                schema: 1,
+                intentDigest: j.digest,
+                status: 'held-for-review'
+              });
+            return;
+          }
+          const inverse = input({
+            conversationId: review.conversationId,
+            actionId: review.actionId,
+            digest: review.digest
+          });
+          await reauthorize(a, request);
+          await save(p.path + '.result', { schema: 1, intentDigest: j.digest, inverse });
+        });
+        return undoStatusFor(a, p, j, request);
+      });
+    },
     available(/** @type {string} */ homeId) {
       return !!reviewsFor(homeId) && !!publisherFor(homeId);
     },
