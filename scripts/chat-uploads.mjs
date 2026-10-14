@@ -177,6 +177,7 @@ export async function createChatUploads({
       if (!Buffer.from(metadata).equals(Buffer.from(JSON.stringify(expected))))
         throw Error('Original metadata changed');
       return {
+        record: structuredClone(record),
         source: {
           id: sourceId,
           title: job.input.title,

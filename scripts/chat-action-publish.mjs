@@ -9,6 +9,7 @@ import { persistCycle } from './maintainer-journal.mjs';
 import { createCallerMaintainerClient } from './fulcra-ingest.mjs';
 import { buildPublicationIntent } from './maintainer-publish.mjs';
 import { runPublication } from './publication-journal.mjs';
+import { validateSourceAdmissionDraft } from './chat-source-admission.mjs';
 const hash = (/** @type {any} */ value) =>
   createHash('sha256').update(canonicalJSON(value)).digest('hex');
 /** Current-token-only adapter to the existing designated maintainer journal.
@@ -16,8 +17,23 @@ const hash = (/** @type {any} */ value) =>
 export function createChatActionPublisher({
   directory,
   verifySources,
+  sourceOnly = false,
+  readSourceApproval,
   clientFor = createCallerMaintainerClient
 }) {
+  if (typeof sourceOnly !== 'boolean') throw Error('Explicit source-only adapter mode required');
+  async function sourceDecision(
+    /** @type {any} */ record,
+    /** @type {any} */ access,
+    /** @type {any} */ context
+  ) {
+    if (!sourceOnly) return;
+    if (
+      typeof readSourceApproval !== 'function' ||
+      canonicalJSON(await readSourceApproval(record, access, context)) !== canonicalJSON(context)
+    )
+      throw Error('Exact persisted owner source decision required');
+  }
   async function privateJSON(/** @type {string} */ path) {
     try {
       const st = await lstat(path);
@@ -60,16 +76,22 @@ export function createChatActionPublisher({
       !Array.isArray(p.sources)
     )
       throw Error('Reviewed home scope differs');
-    const draft = validateHomeAction(p.draft),
+    const draft = sourceOnly
+        ? validateSourceAdmissionDraft(p.draft, p.actionId)
+        : validateHomeAction(p.draft),
       expected = {
         id: p.actionId,
         homeId: scope.homeId,
-        ...draft,
+        ...(sourceOnly
+          ? { kind: draft.kind, value: draft.value, attachment: draft.attachment }
+          : draft),
         ...(draft.kind === 'fact' ? { baseRevision: p.baseline.revision } : {}),
         authorUserId: scope.principalId,
         recordedAt: p.recordedAt
       };
     if (
+      (sourceOnly &&
+        (p.kind !== 'source-admission' || p.sources[0]?.sha256 !== draft.attachment.sha256)) ||
       canonicalJSON(record) !== canonicalJSON(expected) ||
       p.sources.length !== draft.sourceIds.length ||
       new Set(p.sources.map((/** @type {any} */ s) => s.id)).size !== p.sources.length ||
@@ -82,6 +104,8 @@ export function createChatActionPublisher({
     return {
       scope,
       p,
+      sourceIds: draft.sourceIds,
+      context,
       allowed: new Set([
         record.id,
         ...p.sources
@@ -153,7 +177,7 @@ export function createChatActionPublisher({
           throw Error('Uploaded original is not an exact verified source');
       }
     }
-    const original = await verifySources(record.sourceIds, {
+    const original = await verifySources(approval.sourceIds, {
       ...access,
       home: input.home,
       fileVersion: input.baselineVersion
@@ -162,6 +186,7 @@ export function createChatActionPublisher({
       [...xs].map((x) => ({ id: x.id, sha256: x.sha256 })).sort((a, b) => a.id.localeCompare(b.id));
     if (canonicalJSON(sorted(original)) !== canonicalJSON(sorted(p.sources)))
       throw Error('Reviewed original changed');
+    await sourceDecision(record, access, approval.context);
     return { ...input, rows: input.rows.filter((/** @type {any} */ r) => allowed.has(r.id)) };
   }
   async function pendingIntent(/** @type {any} */ approval, recovery = false) {
@@ -259,6 +284,7 @@ export function createChatActionPublisher({
     ) {
       /** @type {any} */ let approval, client, expectedIntent;
       try {
+        await sourceDecision(record, access, context);
         approval = approved(record, access, context);
         client = clientFor(
           approval.scope.homeId,
@@ -309,6 +335,7 @@ export function createChatActionPublisher({
           client.write(path, value, async () => {
             await transport.read();
             if (beforeCommit) await beforeCommit();
+            await sourceDecision(record, access, context);
           })
       };
       try {
@@ -327,6 +354,7 @@ export function createChatActionPublisher({
       /** @type {any} */ access,
       /** @type {any} */ context
     ) {
+      await sourceDecision(record, access, context);
       const approval = approved(record, access, context);
       const lock = join(directory, '.cycle.lock');
       try {
@@ -356,6 +384,7 @@ export function createChatActionPublisher({
           [];
         if (matches.length !== 1 || canonicalJSON(attributed(matches[0])) !== canonicalJSON(record))
           throw Error('Accepted record readback differs');
+        await sourceDecision(record, access, context);
         // Confirm only local journal state under the existing maintainer lock; no remote upload.
         const pointer = await privateJSON(join(directory, 'publication.json'));
         if (pointer?.intentId === intent.intentId && pointer.status === 'pending') {
