@@ -125,8 +125,9 @@ export async function createChatModelPatches({
       .map((x) => ({ id: x.id, sha256: x.sha256 }))
       .sort((a, b) => a.id.localeCompare(b.id));
   }
-  async function fresh(/** @type {any} */ initial, /** @type {any} */ request) {
+  async function fresh(/** @type {any} */ initial, /** @type {any} */ request, ownerOnly = false) {
     const a = await access(request);
+    if (ownerOnly) requireOwner(a);
     if (
       canonicalJSON(binding(a.scope)) !== canonicalJSON(binding(initial.scope)) ||
       canonicalJSON(base(a)) !== canonicalJSON(base(initial))
@@ -326,11 +327,12 @@ export async function createChatModelPatches({
     /** @type {any} */ a,
     /** @type {any} */ context,
     /** @type {string} */ actionId,
-    /** @type {any} */ request
+    /** @type {any} */ request,
+    ownerOnly = false
   ) {
     if (!old.staged) return view(old.j, a);
     return withChatLock(join(old.actor, '.capacity'), async () => {
-      const current = await fresh(a, request),
+      const current = await fresh(a, request, ownerOnly),
         saved = await existing(current, context, actionId);
       if (!saved) throw Error('Exact interrupted model proposal unavailable');
       if (saved.staged) await promote(saved.path);
@@ -416,10 +418,30 @@ export async function createChatModelPatches({
     async prepare(
       /** @type {any} */ input,
       /** @type {any} */ context,
-      /** @type {any} */ request
+      /** @type {any} */ request,
+      /** @type {any} */ expectedBaseline = undefined
     ) {
       const a = await access(request),
         draft = validateModelPatch(input);
+      if (expectedBaseline !== undefined) {
+        requireOwner(a);
+        if (
+          !exact(expectedBaseline, [
+            'revision',
+            'fileVersion',
+            'homeDigest',
+            'modelDigest',
+            'binding'
+          ])
+        )
+          throw Error('Exact owner-bound model preparation required');
+        const { binding: expectedBinding, ...expectedBase } = expectedBaseline;
+        if (
+          canonicalJSON(base(a)) !== canonicalJSON(expectedBase) ||
+          canonicalJSON(binding(a.scope)) !== canonicalJSON(expectedBinding)
+        )
+          throw Error('Bound model preparation baseline or owner scope changed');
+      }
       if (
         !exact(context, ['conversationId', 'turnId']) ||
         !uuid.test(context.conversationId) ||
@@ -440,14 +462,14 @@ export async function createChatModelPatches({
         throw Error('Credentials cannot be saved in a model proposal');
       const actionId = identity(binding(a.scope), context, draft),
         old = await existing(a, context, actionId);
-      if (old) return recover(old, a, context, actionId, request);
+      if (old) return recover(old, a, context, actionId, request, expectedBaseline !== undefined);
       const { changes } = buildModelPatchCandidate(a.home, draft),
         sources = await sourceChecks(draft, a);
-      await fresh(a, request);
+      await fresh(a, request, expectedBaseline !== undefined);
       const folder = await folders(a.scope, context.conversationId, true);
       if (!folder) throw Error('Private model actor required');
       return withChatLock(join(folder.actor, '.capacity'), async () => {
-        const current = await fresh(a, request),
+        const current = await fresh(a, request, expectedBaseline !== undefined),
           prior = await existing(current, context, actionId);
         if (prior) {
           if (prior.staged) await promote(prior.path);
@@ -472,7 +494,7 @@ export async function createChatModelPatches({
           j = { schema: 1, proposal, digest: sha(proposal) };
         const conversation = await dir(join(folder.actor, context.conversationId), true);
         if (!conversation) throw Error('Private model conversation unavailable');
-        const last = await fresh(a, request);
+        const last = await fresh(a, request, expectedBaseline !== undefined);
         await save(join(conversation, actionId + '.json'), j);
         return view(j, last);
       });

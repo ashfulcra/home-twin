@@ -22,6 +22,7 @@ export function createChatModelPublisher({
   authorize,
   verifySources,
   readApproved,
+  prepareModelPatch,
   clientFor = createCallerMaintainerClient
 }) {
   directory = resolve(directory);
@@ -308,6 +309,24 @@ export function createChatModelPublisher({
     };
     if (pointer?.intentId === intent.intentId && pointer.status === 'pending')
       await save(join(directory, 'publication.json'), { ...pointer, status: 'confirmed', result });
+    const receipts = join(directory, 'model-publication-results');
+    try {
+      await privateDir(receipts);
+    } catch (e) {
+      if (!missing(e)) throw e;
+      await privateDir(receipts, true);
+    }
+    await save(
+      join(receipts, review.digest + '.json'),
+      {
+        schema: 1,
+        approvalDigest: review.digest,
+        intentId: intent.intentId,
+        targetDigest: intent.targetDigest,
+        revision: intent.target.revision
+      },
+      true
+    );
     return result;
   }
   /** @returns {Promise<any>} */
@@ -398,7 +417,159 @@ export function createChatModelPublisher({
       if (locked) await rmdir(lock);
     }
   }
+  /** Read-only cloud operation; creates a distinct private inverse proposal, never approval or upload. */
+  async function prepareRollback(/** @type {any} */ input, /** @type {any} */ request) {
+    let locked = false;
+    const lock = join(directory, '.cycle.lock');
+    try {
+      if (typeof prepareModelPatch !== 'function')
+        throw Error('Model inverse preparation unavailable');
+      await privateDir(directory);
+      assertExternalState(directory, fileURLToPath(new URL('../', import.meta.url)));
+      await mkdir(lock, { mode: 0o700 });
+      locked = true;
+      const initial = await access(request),
+        b = bound(initial),
+        pointer = await state(b);
+      if (pointer?.status === 'pending')
+        throw Error('Resolve pending writes before inverse preparation');
+      const review = await readApproved(input, request),
+        intent = await associated(review, b);
+      if (!intent) throw Error('Accepted model intent required for inverse');
+      const client = clientFor(
+        b.homeId,
+        { root: b.root, checkSources: true, sourceMaxBytes: 200 * 1024 * 1024 },
+        request.token
+      );
+      if ((await confirm(intent, request, initial, review, client)).status !== 'model-applied')
+        throw Error('Exact accepted target proof unavailable');
+      const current = await client.read();
+      identity(current, b);
+      const a = await access(request);
+      if (
+        !same(bound(a), b) ||
+        !same(a.home, current.home) ||
+        a.fileVersion !== current.baselineVersion ||
+        hash(current.home.reconstruction?.buildingModel) !== intent.rollbackBaseline.modelDigest ||
+        !same(
+          current.home.reconstruction?.userOverrides ?? null,
+          intent.target.reconstruction?.userOverrides ?? null
+        )
+      )
+        throw Error('Accepted target model or construction choice changed');
+      for (const source of intent.review.sources) {
+        const before =
+            intent.target.sources?.filter((/** @type {any} */ s) => s.id === source.id) ?? [],
+          now = current.home.sources?.filter((/** @type {any} */ s) => s.id === source.id) ?? [],
+          checks = current.sourceChecks?.filter((/** @type {any} */ s) => s.id === source.id) ?? [];
+        if (
+          before.length !== 1 ||
+          now.length !== 1 ||
+          !same(before, now) ||
+          checks.length !== 1 ||
+          checks[0].status !== 'unchanged' ||
+          checks[0].currentSHA256 !== source.sha256
+        )
+          throw Error('Inverse source version changed');
+      }
+      const originals = await verifySources(review.proposal.draft.sourceIds, a);
+      if (
+        !Array.isArray(originals) ||
+        !same(
+          [...originals].sort((x, y) => x.id.localeCompare(y.id)),
+          intent.review.sources
+        )
+      )
+        throw Error('Inverse original changed');
+      const end = await client.read();
+      identity(end, b);
+      const last = await access(request);
+      if (
+        !same(bound(last), b) ||
+        !same(end.home, current.home) ||
+        end.baselineVersion !== current.baselineVersion ||
+        !same(end.sourceChecks, current.sourceChecks) ||
+        !same(last.home, current.home) ||
+        last.fileVersion !== current.baselineVersion
+      )
+        throw Error('Current inverse baseline changed');
+      const key = hash({
+        targetIntentId: intent.intentId,
+        homeDigest: hash(current.home),
+        fileVersion: current.baselineVersion
+      });
+      const turnId =
+        key.slice(0, 8) +
+        '-' +
+        key.slice(8, 12) +
+        '-5' +
+        key.slice(13, 16) +
+        '-8' +
+        key.slice(17, 20) +
+        '-' +
+        key.slice(20, 32);
+      return await prepareModelPatch(
+        { ...intent.inverse, note: 'Undo approved model change ' + intent.review.actionId },
+        { conversationId: intent.review.conversationId, turnId },
+        request,
+        {
+          revision: current.home.revision,
+          fileVersion: current.baselineVersion,
+          homeDigest: hash(current.home),
+          modelDigest: hash(current.home.reconstruction.buildingModel),
+          binding: review.proposal.binding
+        }
+      );
+    } catch {
+      return { status: 'held-for-review' };
+    } finally {
+      if (locked) await rmdir(lock);
+    }
+  }
+  /** Cheap current-owner status of an already verified receipt; no original hashing, remote effects or new approval. */
+  async function status(/** @type {any} */ input, /** @type {any} */ request) {
+    try {
+      await privateDir(directory);
+      assertExternalState(directory, fileURLToPath(new URL('../', import.meta.url)));
+      const a = await access(request),
+        b = bound(a);
+      await state(b);
+      const review = await readApproved(input, request),
+        intent = await associated(review, b);
+      if (!intent) return { status: 'model-approval-recorded' };
+      const dir = join(directory, 'model-publication-results');
+      try {
+        await privateDir(dir);
+      } catch (e) {
+        if (missing(e)) return { status: 'publication-pending' };
+        throw e;
+      }
+      const receipt = await read(join(dir, review.digest + '.json'));
+      if (!receipt) return { status: 'publication-pending' };
+      if (
+        !same(receipt, {
+          schema: 1,
+          approvalDigest: review.digest,
+          intentId: intent.intentId,
+          targetDigest: intent.targetDigest,
+          revision: intent.target.revision
+        })
+      )
+        throw Error('Exact model readback receipt differs');
+      const last = await access(request);
+      if (!same(bound(last), b)) throw Error('Model status owner changed');
+      return {
+        status: 'model-applied',
+        revision: intent.target.revision,
+        intentId: intent.intentId
+      };
+    } catch {
+      return { status: 'held-for-review' };
+    }
+  }
   return {
+    prepareRollback,
+    status,
     publish: (/** @type {any} */ input, /** @type {any} */ request) => run(input, request),
     resolvePublication: (/** @type {any} */ input, /** @type {any} */ request) =>
       run(input, request, true)

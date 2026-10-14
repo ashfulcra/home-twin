@@ -107,6 +107,19 @@ async function fixture(approved = true) {
     authorize,
     verifySources,
     readApproved: (/** @type {any} */ i, /** @type {any} */ r) => patch.readApproved(i, r),
+    prepareModelPatch: (
+      /** @type {any} */ d,
+      /** @type {any} */ c,
+      /** @type {any} */ r,
+      /** @type {any} */ b
+    ) => {
+      if (mode === 'revoke-before-undo-prepare') role = 'contributor';
+      if (mode === 'drift-before-undo-prepare') {
+        home.reconstruction.buildingModel.walls[0].thicknessFeet = 0.6;
+        version = 'drifted';
+      }
+      return patch.prepare(d, c, r, b);
+    },
     clientFor: (/** @type {string} */ id, /** @type {any} */ opts, /** @type {string} */ token) => {
       if (
         id !== 'example' ||
@@ -256,4 +269,90 @@ test('owner role lost during the final slow native read prevents upload at the e
   expect(result.status).toBe('publication-pending');
   expect(f.writes.filter((p) => p.endsWith('/home.json'))).toHaveLength(0);
   expect(f.home().reconstruction.buildingModel.walls[0].openings[0].widthFeet).toBe(3);
+});
+
+test('rollback prepares a new exact owner review; applying it preserves newer unrelated facts and original overrides', async () => {
+  const f = await fixture();
+  await f.publisher.publish(f.input, f.request);
+  const target = structuredClone(f.home()),
+    later = structuredClone(target);
+  later.revision = 9;
+  later.contacts.push({ id: 'newer', name: 'Newer' });
+  const ptr = JSON.parse(await readFile(join(f.directory, 'publication.json'), 'utf8')),
+    intent = JSON.parse(
+      await readFile(join(f.directory, 'publications', ptr.intentId + '.json'), 'utf8')
+    );
+  f.files.set('/Example/twin/history/' + intent.targetDigest + '.json', target);
+  f.setHome(later);
+  expect(typeof f.publisher.prepareRollback).toBe('function');
+  const count = f.writes.length,
+    undo = await f.publisher.prepareRollback(f.input, f.request);
+  expect(undo.status).toBe('needs-model-review');
+  expect(undo.actionId).not.toBe(f.input.actionId);
+  expect(undo.changes[0].before).toBe(3.5);
+  expect(undo.changes[0].after).toBe(3);
+  expect(undo.baseRevision).toBe(9);
+  expect(f.writes).toHaveLength(count);
+  const exact = {
+    actionId: undo.actionId,
+    conversationId: undo.conversationId,
+    digest: undo.digest
+  };
+  expect((await f.publisher.publish(exact, f.request)).status).toBe('held-for-review');
+  await f.patch.approve(exact, f.request);
+  expect((await f.publisher.publish(exact, f.request)).status).toBe('model-applied');
+  expect(f.home().revision).toBe(10);
+  expect(f.home().contacts).toEqual(later.contacts);
+  expect(f.home().reconstruction.userOverrides).toEqual(later.reconstruction.userOverrides);
+  expect(f.home().reconstruction.buildingModel.walls[0].openings[0].widthFeet).toBe(3);
+});
+test('rollback holds newer model or construction overrides, changed originals, missing target proof and other pending writes', async () => {
+  for (const kind of ['model', 'override', 'source', 'proof', 'pending']) {
+    const f = await fixture();
+    await f.publisher.publish(f.input, f.request);
+    const current = structuredClone(f.home());
+    if (kind === 'model') current.reconstruction.buildingModel.walls[0].thicknessFeet = 0.6;
+    if (kind === 'override')
+      current.reconstruction.userOverrides.construction.addition = 'new-choice';
+    if (kind === 'source') f.setOriginal('b'.repeat(64));
+    if (kind === 'proof') current.contacts.push({ id: 'later' });
+    if (['model', 'override', 'proof'].includes(kind)) f.setHome(current);
+    if (kind === 'pending') {
+      const path = join(f.directory, 'publication.json'),
+        ptr = JSON.parse(await readFile(path, 'utf8'));
+      await writeFile(path, JSON.stringify({ ...ptr, status: 'pending' }));
+    }
+    expect(typeof f.publisher.prepareRollback).toBe('function');
+    const count = f.writes.length;
+    expect((await f.publisher.prepareRollback(f.input, f.request)).status).toBe('held-for-review');
+    expect(f.writes).toHaveLength(count);
+  }
+});
+
+test('a different model appearing at inverse proposal admission is held before any review allocation', async () => {
+  const f = await fixture();
+  await f.publisher.publish(f.input, f.request);
+  const before = await f.patch.list(f.input.conversationId, f.request);
+  f.setMode('drift-before-undo-prepare');
+  expect((await f.publisher.prepareRollback(f.input, f.request)).status).toBe('held-for-review');
+  expect(await f.patch.list(f.input.conversationId, f.request)).toHaveLength(before.length);
+});
+test('model status requires the current owner and durable exact readback receipt after factory reconstruction', async () => {
+  const f = await fixture();
+  expect(typeof f.publisher.status).toBe('function');
+  expect((await f.publisher.status(f.input, f.request)).status).toBe('model-approval-recorded');
+  await f.publisher.publish(f.input, f.request);
+  const count = f.writes.length;
+  expect((await f.publisher.status(f.input, f.request)).status).toBe('model-applied');
+  expect(f.writes).toHaveLength(count);
+  f.setRole('contributor');
+  expect((await f.publisher.status(f.input, f.request)).status).toBe('held-for-review');
+});
+
+test('owner role lost before bound inverse admission cannot persist a contributor rollback proposal', async () => {
+  const f = await fixture();
+  await f.publisher.publish(f.input, f.request);
+  f.setMode('revoke-before-undo-prepare');
+  expect((await f.publisher.prepareRollback(f.input, f.request)).status).toBe('held-for-review');
+  expect(await f.patch.list(f.input.conversationId, f.request)).toHaveLength(1);
 });
