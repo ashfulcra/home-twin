@@ -1,5 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {buildHouseholdRefresh,validateRefreshShares} from './household-refresh.js';
+import {exactAdmissionShare} from './share-scope.js';
 import {runHouseholdRefresh} from '../../../scripts/household-refresh-journal.mjs';
 import {mkdtempSync,writeFileSync,readFileSync,mkdirSync,rmdirSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
@@ -34,6 +35,14 @@ describe('curated household refresh',()=>{
    const f=await fixture();Object.assign(f.shares[0],patch);await expect(runHouseholdRefresh(f.dir,f.packet,f.transport,f.consent)).rejects.toThrow();expect(f.calls).toHaveLength(0);
   }
   const f=await fixture();f.shares.length=0;expect(()=>validateRefreshShares(f.shares,f.packet)).toThrow(/grant|access/i);
+ });
+ it('a valid named household grant does not authorize refresh beside an older all-account grant',async()=>{
+  const f=await fixture();const household=f.shares[0];
+  f.shares.push({...household,datashare_id:'old-all-account',datashare_name:'older-account-access',share_all_data:true});
+  const body={datashare_name:household.datashare_name,fulcra_user_name:owner,fulcra_data_types:household.fulcra_data_types,permissions:[{allowed_fulcra_userid:member}]};
+  expect(exactAdmissionShare(f.shares,body)).toBe(household.datashare_id);
+  await expect(runHouseholdRefresh(f.dir,f.packet,f.transport,f.consent)).rejects.toThrow(/all-account/);
+  expect(f.calls).toEqual([]);
  });
  it('resolves a lost commit response by exact readback without another write',async()=>{
   const f=await fixture(), write=f.transport.writeFile;f.transport.writeFile=async(...args)=>{await write(...args);if(args[0]===f.packet.publicationPath)throw Error('response lost');};
