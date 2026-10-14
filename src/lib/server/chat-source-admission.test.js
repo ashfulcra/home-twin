@@ -1,5 +1,6 @@
 import { test, expect } from 'vitest';
-import { mkdtemp, writeFile, readFile, unlink } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, unlink, rename, access } from 'node:fs/promises';
+import { lstatSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -238,4 +239,31 @@ test('removing the owner decision during the final commit read prevents the home
   expect(f.writes).toBe(1);
   expect(f.current.home.revision).toBe(1);
   expect(f.current.home.sources).toEqual([]);
+});
+
+test('a missing designated state after a native read is held before cycle persistence can recreate it', async () => {
+  const f = await fixture(),
+    before = lstatSync(f.directory),
+    read = f.client.read;
+  let moved = false;
+  f.client.read = async () => {
+    const snapshot = await read();
+    if (!moved) {
+      moved = true;
+      await rename(f.directory, f.directory + '-preserved');
+    }
+    return snapshot;
+  };
+  const publisher = createChatActionPublisher({
+    ...f.options,
+    assertState: () => {
+      const current = lstatSync(f.directory);
+      if (current.dev !== before.dev || current.ino !== before.ino) throw Error('Replaced state');
+    }
+  });
+  expect((await publisher.publish(f.prepared.record, f.access, f.context)).status).toBe(
+    'held-for-review'
+  );
+  await expect(access(f.directory)).rejects.toThrow();
+  expect(f.writes).toBe(0);
 });

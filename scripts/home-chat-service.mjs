@@ -1,7 +1,10 @@
 import { mkdir, lstat, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { lstatSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
+import { canonicalJSON } from '../src/lib/home/canonical-json.js';
+import { createChatSourceJobs } from './chat-source-jobs.mjs';
 import { fileURLToPath } from 'node:url';
 import { chatTranscriptArchive, chatSourceReader } from './chat-storage.mjs';
 import { persistentChatJournal } from './chat-journal.mjs';
@@ -65,6 +68,66 @@ export async function createModelActionJobs(config, authorize, verifySources, mo
     publisherFor: (/** @type {string} */ id) => native.get(id)
   });
 }
+/** Explicit source-save opt-in, bound to existing private per-home maintainer state.
+ * @param {any} config @param {any} authorize @param {any} verifySources @param {any} uploads */
+export async function createSourceActionJobs(config, authorize, verifySources, uploads) {
+  const selected = config.homes.filter((/** @type {any} */ h) => h.sourceActions === true);
+  if (!selected.length) return null;
+  if (!uploads || typeof uploads.source !== 'function')
+    throw Error('Confirmed own uploads required for source actions');
+  /** @type {Map<string,any>} */ const states = new Map();
+  for (const home of selected) {
+    if (
+      home.recordActions !== true ||
+      typeof home.maintainerDirectory !== 'string' ||
+      !home.maintainerDirectory
+    )
+      throw Error('Existing designated source maintainer required');
+    const state = resolve(home.maintainerDirectory);
+    assertExternalState(state, fileURLToPath(new URL('../', import.meta.url)));
+    const st = await lstat(state);
+    if (!st.isDirectory() || st.isSymbolicLink() || st.mode & 0o077 || states.has(home.homeId))
+      throw Error('One existing private source maintainer per home required');
+    states.set(home.homeId, { path: state, dev: st.dev, ino: st.ino });
+  }
+  const currentState = (/** @type {string} */ id) => {
+    const selected = states.get(id);
+    if (!selected) return false;
+    try {
+      const st = lstatSync(selected.path);
+      return (
+        st.isDirectory() &&
+        !st.isSymbolicLink() &&
+        !(st.mode & 0o077) &&
+        st.dev === selected.dev &&
+        st.ino === selected.ino
+      );
+    } catch {
+      return false;
+    }
+  };
+  return createChatSourceJobs({
+    directory: join(config.directory, 'source-jobs'),
+    authorize,
+    enabledFor: currentState,
+    sourceFor: (/** @type {string} */ id, /** @type {any} */ request) =>
+      uploads.source(id, request),
+    publisherFor: (/** @type {string} */ id, /** @type {any} */ reader) => {
+      const state = states.get(id);
+      if (!state || !currentState(id))
+        throw Error('Source maintainer state unavailable or replaced');
+      return createChatActionPublisher({
+        directory: state.path,
+        assertState: () => {
+          if (!currentState(id)) throw Error('Source maintainer state unavailable or replaced');
+        },
+        sourceOnly: true,
+        readSourceApproval: reader,
+        verifySources
+      });
+    }
+  });
+}
 /** Persistent ordinary worker; browser disconnect does not cancel the job. @param {any} options */
 export async function createChatWorker({
   directory,
@@ -79,7 +142,9 @@ export async function createChatWorker({
   modelReviews,
   modelReviewsFor,
   modelJobs,
-  modelJobsFor
+  modelJobsFor,
+  sourceJobs,
+  sourceJobsFor
 }) {
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const root = await lstat(directory);
@@ -90,6 +155,8 @@ export async function createChatWorker({
   /** @type {Map<string,any>} */ const recordJobs = new Map();
   /** @type {Map<string,any>} */ const modelWork = new Map();
   /** @type {Map<string,Promise<any>>} */ const modelTails = new Map();
+  /** @type {Map<string,any>} */ const sourceReviews = new Map();
+  /** @type {Map<string,any>} */ const sourceWork = new Map();
   async function bind(/** @type {any} */ input) {
     if (
       typeof input.token !== 'string' ||
@@ -130,6 +197,13 @@ export async function createChatWorker({
     scope.homeId + '/' + scope.principalId + '/' + id;
   return {
     async idle() {
+      await Promise.all([...sourceReviews.values()].map((x) => x.promise));
+      await Promise.all(
+        [...sourceWork.values()].map(async (x) => {
+          await x.admission;
+          await x.promise;
+        })
+      );
       await Promise.all(
         [...active.values(), ...recordJobs.values(), ...modelWork.values()].map((x) => x.promise)
       );
@@ -151,9 +225,17 @@ export async function createChatWorker({
       const selectedReviews = modelReviewsFor ? modelReviewsFor(scope.homeId) : modelReviews;
       const possibleJobs = modelJobsFor ? modelJobsFor(scope.homeId) : modelJobs;
       const selectedJobs = possibleJobs?.available(scope.homeId) ? possibleJobs : null;
+      const possibleSources = sourceJobsFor ? sourceJobsFor(scope.homeId) : sourceJobs;
+      const selectedSources = possibleSources?.available(scope.homeId) ? possibleSources : null;
       if (request.action === 'status')
         return {
           available: !!selectedModel,
+          ...(selectedSources
+            ? {
+                sourceActions:
+                  scope.role === 'maintainer' && scope.principalId === scope.ownerUserId
+              }
+            : {}),
           ...(selectedJobs
             ? {
                 modelActions: scope.role === 'maintainer' && scope.principalId === scope.ownerUserId
@@ -179,6 +261,117 @@ export async function createChatWorker({
           token: request.token,
           homeId: scope.homeId
         });
+      }
+      if (['source-review', 'save-source', 'source-status'].includes(request.action)) {
+        if (
+          !selectedSources ||
+          scope.role !== 'maintainer' ||
+          scope.principalId !== scope.ownerUserId
+        )
+          throw Error('Current designated source owner required');
+        const i = request.input,
+          review = request.action === 'source-review';
+        if (
+          !i ||
+          typeof i !== 'object' ||
+          Array.isArray(i) ||
+          Object.keys(i).length !== (review ? 1 : 2) ||
+          Object.keys(i).some(
+            (k) => !(review ? ['sourceId'] : ['actionId', 'digest']).includes(k)
+          ) ||
+          (review
+            ? typeof i.sourceId !== 'string' ||
+              !/^evidence-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(
+                i.sourceId
+              )
+            : typeof i.actionId !== 'string' ||
+              !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(i.actionId) ||
+              typeof i.digest !== 'string' ||
+              !/^[a-f0-9]{64}$/.test(i.digest))
+        )
+          throw Error('Exact own source review required');
+        const current = { token: request.token, homeId: scope.homeId };
+        if (review) {
+          const key = jobKey(scope, i.sourceId),
+            prior = sourceReviews.get(key),
+            basis = canonicalJSON({ scope, fileVersion: access.fileVersion, home: access.home });
+          if (prior) {
+            if (prior.basis !== basis && prior.result) {
+              sourceReviews.delete(key);
+            } else if (prior.basis === basis && prior.result) {
+              sourceReviews.delete(key);
+              return { ...prior.result, operation: { active: false } };
+            } else
+              return {
+                sourceId: i.sourceId,
+                status: 'checking-source',
+                operation: { active: true }
+              };
+          }
+          for (const [oldKey, old] of sourceReviews) {
+            if (sourceReviews.size < 8) break;
+            if (old.result) sourceReviews.delete(oldKey);
+          }
+          if (sourceReviews.size >= 8)
+            throw Error('Source review worker busy; retry this source later');
+          /** @type {any} */ const job = { basis, promise: null, result: null };
+          sourceReviews.set(key, job);
+          job.promise = selectedSources
+            .prepare(i, current)
+            .then((/** @type {any} */ value) => {
+              job.result = value;
+            })
+            .catch(() => {
+              job.result = { sourceId: i.sourceId, status: 'source-review-unconfirmed' };
+            });
+          return { sourceId: i.sourceId, status: 'checking-source', operation: { active: true } };
+        }
+        const key = jobKey(scope, i.actionId) + '/source/' + i.digest;
+        if (request.action === 'source-status')
+          return {
+            ...(await selectedSources.status(i, current)),
+            operation: { active: sourceWork.has(key) }
+          };
+        const prior = sourceWork.get(key);
+        if (prior) {
+          await prior.admission;
+          return { ...(await selectedSources.status(i, current)), operation: { active: true } };
+        }
+        if (sourceWork.size >= 8) throw Error('Source worker busy; retry the same saved request');
+        /** @type {any} */ const job = {
+          input: structuredClone(i),
+          admission: null,
+          promise: null
+        };
+        sourceWork.set(key, job);
+        try {
+          job.admission = selectedSources.request(i, current);
+          const saved = await job.admission;
+          if (['accepted', 'held-for-review'].includes(saved.status)) {
+            sourceWork.delete(key);
+            return { ...saved, operation: { active: false } };
+          }
+          const tail = modelTails.get(scope.homeId) ?? Promise.resolve();
+          job.promise = tail
+            .catch(() => {})
+            .then(async () => {
+              try {
+                return await selectedSources.run(i, current);
+              } catch {
+                return { status: 'source-save-unconfirmed' };
+              } finally {
+                sourceWork.delete(key);
+              }
+            });
+          modelTails.set(scope.homeId, job.promise);
+          job.promise.then(() => {
+            if (modelTails.get(scope.homeId) === job.promise) modelTails.delete(scope.homeId);
+          });
+          return { ...saved, operation: { active: true } };
+        } catch (e) {
+          sourceWork.delete(key);
+          throw e;
+        }
       }
       const journal = await journalFor(scope);
       if (request.action === 'preview-model') {
@@ -651,8 +844,10 @@ export async function startChatService(config) {
         })
       : null;
     const modelJobs = await createModelActionJobs(config, authorize, verifySources, modelReviews);
+    const sourceJobs = await createSourceActionJobs(config, authorize, verifySources, uploads);
     worker = await createChatWorker({
       modelJobs,
+      sourceJobs,
       directory: join(config.directory, 'runs'),
       authorize,
       modelFor: (/** @type {string} */ homeId) => models.get(homeId),

@@ -19,6 +19,7 @@ export function createChatActionPublisher({
   verifySources,
   sourceOnly = false,
   readSourceApproval,
+  assertState = () => {},
   clientFor = createCallerMaintainerClient
 }) {
   if (typeof sourceOnly !== 'boolean') throw Error('Explicit source-only adapter mode required');
@@ -27,6 +28,7 @@ export function createChatActionPublisher({
     /** @type {any} */ access,
     /** @type {any} */ context
   ) {
+    assertState();
     if (!sourceOnly) return;
     if (
       typeof readSourceApproval !== 'function' ||
@@ -35,6 +37,7 @@ export function createChatActionPublisher({
       throw Error('Exact persisted owner source decision required');
   }
   async function privateJSON(/** @type {string} */ path) {
+    assertState();
     try {
       const st = await lstat(path);
       if (!st.isFile() || st.isSymbolicLink() || st.mode & 0o077 || st.size > 4 * 1024 * 1024)
@@ -219,6 +222,7 @@ export function createChatActionPublisher({
       throw Error('Pending publication belongs to a different review');
   }
   async function bindIntent(/** @type {any} */ approval, /** @type {any} */ intent) {
+    assertState();
     validateIntent(intent, approval);
     const dir = join(directory, 'chat-publication-actions');
     await mkdir(dir, { recursive: true, mode: 0o700 });
@@ -295,6 +299,7 @@ export function createChatActionPublisher({
         if (await pendingIntent(approval)) return { status: 'publication-pending' };
         const full = await client.read();
         identity(full, approval.scope);
+        assertState();
         persistCycle(directory, buildMaintainerCycle(full));
         const selected = await inspected(full, record, access, approval);
         expectedIntent = buildPublicationIntent(selected);
@@ -306,7 +311,9 @@ export function createChatActionPublisher({
       const transport = {
         ...client,
         read: async () => {
+          assertState();
           const first = await client.read();
+          assertState();
           identity(first, approval.scope);
           if (hash(first.home) !== approval.p.baseline.homeDigest) {
             if (hash(first.home) === expectedIntent.targetDigest) return first;
@@ -336,9 +343,11 @@ export function createChatActionPublisher({
             await transport.read();
             if (beforeCommit) await beforeCommit();
             await sourceDecision(record, access, context);
+            assertState();
           })
       };
       try {
+        assertState();
         const result = await runPublication(directory, transport);
         if (!result?.confirmed) return { status: 'held-for-review' };
         return { status: 'accepted', revision: result.revision };

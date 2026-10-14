@@ -31,7 +31,13 @@ const binding = (/** @type {any} */ s) => ({
  * No token persistence, automatic startup job, model tool, upload or route registration.
  * publisherFor must construct the explicit source-only adapter using the supplied trusted reader.
  * @param {any} options */
-export async function createChatSourceJobs({ directory, authorize, sourceFor, publisherFor }) {
+export async function createChatSourceJobs({
+  directory,
+  authorize,
+  sourceFor,
+  publisherFor,
+  enabledFor = () => true
+}) {
   directory = resolve(directory);
   async function dir(/** @type {string} */ p, create = false) {
     try {
@@ -60,6 +66,7 @@ export async function createChatSourceJobs({ directory, authorize, sourceFor, pu
       scope = validateChatScope(a.scope);
     if (
       scope.homeId !== request.homeId ||
+      enabledFor(scope.homeId) !== true ||
       scope.role !== 'maintainer' ||
       scope.principalId !== scope.ownerUserId ||
       a.home?.id !== scope.homeId ||
@@ -304,6 +311,7 @@ export async function createChatSourceJobs({ directory, authorize, sourceFor, pu
     return shape(j, d, outcome);
   }
   return {
+    available: (/** @type {string} */ homeId) => enabledFor(homeId) === true,
     async prepare(/** @type {any} */ raw, /** @type {any} */ request) {
       if (
         !exact(raw, ['sourceId']) ||
