@@ -19,3 +19,7 @@ The handoff validates geometry first and projects allowed primitive fields rathe
 ## Frozen alternatives
 
 For an optional owner view of three saved models, follow [frozen comparison setup](model-comparison.md). Its private checksum-bound data package retains the originals and frozen date; viewing alternatives neither accepts geometry nor changes native Fulcra grants.
+
+## Floor datums and voids
+
+A floor envelope’s `elevationFeet` is its slab-top datum, independent of the named level’s nominal elevation. Rendering preserves that datum in assembled views and adds only the level’s display separation in exploded views. Room floors follow their named level; use a separately declared level for an explicitly sunken room rather than assuming that lowering a structural envelope also lowers every room surface. A hole in an envelope and a hole in an overlapping room floor are separate geometry: inspect both before calling a stairwell or double-height void open. An internal void does not imply an exterior notch. Preserve written dimensions, face conventions, source versions and as-built overrides; agreement between reconstructions of the same drawing is not independent confirmation. These are review checks, not authority to autoaccept geometry.

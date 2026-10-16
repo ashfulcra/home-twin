@@ -42,8 +42,9 @@ export function mountBuilding(host, model, options, select) {
   /** @type {any[]} */
   const levels = model.levels;
   const shown = levels.filter((l) => options.level === 'all' || l.id === options.level);
-  /** @param {any} l */
-  const offset = (l) => l.elevationFeet + (options.exploded ? levels.indexOf(l) * 16 : 0);
+  /** @param {any} l @param {number} [elevationFeet] */
+  const offset = (l, elevationFeet = l.elevationFeet) =>
+    elevationFeet + (options.exploded ? levels.indexOf(l) * 16 : 0);
   const levelById = new Map(levels.map((l) => [l.id, l]));
   /** @param {number[][]} polygon @param {number} y @param {number} depth @param {THREE.Material} mat @param {any} id @param {number[][][]} [holes] */
   function slab(polygon, y, depth, mat, id, holes = []) {
@@ -76,7 +77,7 @@ export function mountBuilding(host, model, options, select) {
     if (!shown.some((l) => l.id === f.level)) continue;
     slab(
       f.polygon,
-      offset(levelById.get(f.level)) - f.thicknessFeet,
+      offset(levelById.get(f.level), f.elevationFeet) - f.thicknessFeet,
       f.thicknessFeet,
       floorMat,
       null,
