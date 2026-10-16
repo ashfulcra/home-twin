@@ -109,6 +109,16 @@ export function validateBuilding(input) {
     return { ...l, label: str(l.label || l.id), basis: basis(l.basis) };
   });
   if (!levels.length) throw Error('Missing levels');
+  for (const l of levels) {
+    if (
+      l.logicalGroup !== undefined &&
+      (typeof l.logicalGroup !== 'string' ||
+        !ids.has(l.logicalGroup) ||
+        (levels.find((g) => g.id === l.logicalGroup)?.logicalGroup !== undefined &&
+          levels.find((g) => g.id === l.logicalGroup)?.logicalGroup !== l.logicalGroup))
+    )
+      throw Error('Invalid logical floor group');
+  }
   const rooms = validateReconstruction({
     schemaVersion: 1,
     status: 'draft-needs-review',

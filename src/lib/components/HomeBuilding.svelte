@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { validateBuilding } from '$lib/home/representative-building.js';
+  import { floorLevels, levelMatches } from '$lib/home/building-levels.js';
   import { footprintBounds } from '$lib/home/reconstruction.js';
   let {
     model,
@@ -26,24 +27,27 @@
       return null;
     }
   });
+  let groupedLevels = $derived(floorLevels(parsed?.levels ?? []));
+  const onFloor = (id: string, selected: string) =>
+    levelMatches(parsed?.levels ?? [], id, selected);
   let room = $derived(parsed?.rooms.find((r) => r.id === selected));
   let features = $derived(
     parsed?.features.filter(
       (f) =>
         (!selected || f.roomId === selected) &&
-        (level === 'all' || f.level === level) &&
+        onFloor(f.level, level) &&
         (!query || `${f.name} ${f.kind} ${f.details}`.toLowerCase().includes(query.toLowerCase()))
     ) ?? []
   );
   let floor = $derived(level === 'all' ? (parsed?.levels[0]?.id ?? '') : level);
-  let floorRooms = $derived(parsed?.rooms.filter((r) => r.level === floor) ?? []);
-  let walls = $derived(parsed?.walls.filter((w) => w.level === floor) ?? []);
+  let floorRooms = $derived(parsed?.rooms.filter((r) => onFloor(r.level, floor)) ?? []);
+  let walls = $derived(parsed?.walls.filter((w) => onFloor(w.level, floor)) ?? []);
   let fixtures = $derived(
     parsed?.features.filter(
-      (f) => f.level === floor && !['ceiling', 'skylight', 'finish'].includes(f.kind)
+      (f) => onFloor(f.level, floor) && !['ceiling', 'skylight', 'finish'].includes(f.kind)
     ) ?? []
   );
-  let envelopes = $derived(parsed?.floorEnvelopes.filter((f) => f.level === floor) ?? []);
+  let envelopes = $derived(parsed?.floorEnvelopes.filter((f) => onFloor(f.level, floor)) ?? []);
   let bounds = $derived(
     footprintBounds(
       [
@@ -56,14 +60,12 @@
   );
   const heightLabel = (n: number | null) =>
     n === null ? 'Unknown' : `${Math.floor(n)}′ ${Math.round((n % 1) * 12 * 100) / 100}″`;
-  let selectableRooms = $derived(
-    parsed?.rooms.filter((r) => level === 'all' || r.level === level) ?? []
-  );
+  let selectableRooms = $derived(parsed?.rooms.filter((r) => onFloor(r.level, level)) ?? []);
   $effect(() => {
     if (
       level !== 'all' &&
       selected &&
-      parsed?.rooms.find((r) => r.id === selected)?.level !== level
+      !onFloor(parsed?.rooms.find((r) => r.id === selected)?.level ?? '', level)
     )
       selected = '';
   });
@@ -140,7 +142,7 @@
         }}>Floor plan</button
       ><label
         >Level <select bind:value={level}
-          ><option value="all">Whole house</option>{#each parsed.levels as l}<option value={l.id}
+          ><option value="all">Whole house</option>{#each groupedLevels as l}<option value={l.id}
               >{l.label}</option
             >{/each}</select
         ></label

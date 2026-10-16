@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { levelMatches, levelSeparation } from './building-levels.js';
 import { wallPanels } from './representative-building.js';
 /** @param {HTMLElement} host @param {any} model @param {any} options @param {(id:string)=>void} select */
 export function mountBuilding(host, model, options, select) {
@@ -41,10 +42,10 @@ export function mountBuilding(host, model, options, select) {
   scene.add(group);
   /** @type {any[]} */
   const levels = model.levels;
-  const shown = levels.filter((l) => options.level === 'all' || l.id === options.level);
+  const shown = levels.filter((l) => levelMatches(levels, l.id, options.level));
   /** @param {any} l @param {number} [elevationFeet] */
   const offset = (l, elevationFeet = l.elevationFeet) =>
-    elevationFeet + (options.exploded ? levels.indexOf(l) * 16 : 0);
+    elevationFeet + (options.exploded ? levelSeparation(levels, l.id) : 0);
   const levelById = new Map(levels.map((l) => [l.id, l]));
   /** @param {number[][]} polygon @param {number} y @param {number} depth @param {THREE.Material} mat @param {any} id @param {number[][][]} [holes] */
   function slab(polygon, y, depth, mat, id, holes = []) {
@@ -238,7 +239,7 @@ export function mountBuilding(host, model, options, select) {
       const l = levelById.get(r.level);
       slab(
         r.polygon,
-        r.elevationFeet + (options.exploded ? levels.indexOf(l) * 16 : 0),
+        r.elevationFeet + (options.exploded ? levelSeparation(levels, l.id) : 0),
         r.thicknessFeet,
         roofMat,
         null
