@@ -4,6 +4,9 @@
  import HomeLayoutSchematic from './HomeLayoutSchematic.svelte';
  import HomeModelComparison from './HomeModelComparison.svelte';
  import {onMount} from 'svelte';
+ import {env} from '$env/dynamic/public';
+ import {layoutDraftsEnabled} from '$lib/home/deployment.js';
+ let draftsEnabled=$derived(layoutDraftsEnabled(env));
  import {starterPlan,interviewPlan,parseLength,validatePlan,planWarnings} from '$lib/home/layout.js';
  let view=$state('2D');
  let {home,role,oncorrect}=$props<{home:any,role:string,oncorrect?:(room:any)=>void}>();let plan:any=$state(null);let draftList:any[]=$state([]);let roomId=$state('');let side=$state('north');let length=$state('');let names=$state('');let adjacency=$state('');let message=$state('');let pending:any=$state(null);let saving=$state(false);
@@ -16,11 +19,12 @@
  async function load(){try{const r=await fetch('/api/home/layout');if(!r.ok)throw new Error('Saved drafts are unavailable');const data=await r.json();draftList=data.drafts??[];if(!plan&&data.acceptedPlan)use(data.acceptedPlan);if(!plan&&draftList.length)use(draftList[0].plan);}catch(e){message=e instanceof Error?e.message:String(e);}}
  async function save(){try{pending??={id:crypto.randomUUID(),homeId:home.id,plan:validatePlan(plan)};}catch(e){message=e instanceof Error?e.message:String(e);return;}saving=true;try{const r=await fetch('/api/home/layout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pending)});const data=await r.json();if(!r.ok){if(r.status===400)pending=null;throw new Error(data.message??'Save unconfirmed; retry the same draft');}if(data.status==='pending-readback'){message='Confirmation pending; retry the same draft.';}else{pending=null;message='Draft saved in your Fulcra account. It needs layout review before replacing the accepted model.';await load();}}catch(e){message=e instanceof Error?e.message:String(e);}finally{saving=false;}}
  function addRoom(){plan.rooms.push({id:'room-'+crypto.randomUUID(),name:'New room',x:bounds.x+bounds.w,y:0,w:12,h:12,accuracy:'estimated',measurements:{}});select(plan.rooms.at(-1).id);}
- onMount(load);
+ onMount(()=>{if(draftsEnabled)void load();});
 </script>
 {#if home.reconstruction?.buildingModel}<HomeBuilding model={home.reconstruction.buildingModel} {oncorrect} readonly={role==='viewer'}/>{/if}
 {#if role==='maintainer'}<HomeModelComparison/>{/if}
 {#if home.reconstruction}<details><summary>Original traced footprints and source review</summary><HomeReconstruction model={home.reconstruction}/></details>{/if}
+{#if draftsEnabled}
 <section><h2>Start a correctable floor plan</h2><p>Useful first, precise later. These examples and interview positions are estimates, with north at the top. Saved drafts preserve the accepted house model.</p>
  {#if role==='viewer'}<p>Your household has given you view access.</p>{:else}<fieldset disabled={saving||!!pending}><div class="starters"><button onclick={()=>use(starterPlan('simple'))}>Simple rectangle</button><button onclick={()=>use(starterPlan('hall'))}>Rooms around a hall</button><button onclick={()=>use(starterPlan('lshape'))}>L-shaped starting point</button></div>
  <details><summary>Build from a layout interview</summary><label>What are the familiar room names? <textarea bind:value={names} placeholder="Kitchen&#10;Living Room&#10;Office"></textarea></label><label>Which rooms are adjacent? <textarea bind:value={adjacency} placeholder="Kitchen -> Living Room&#10;Living Room -> Office"></textarea></label><p>Use A → B as <code>A -&gt; B</code>. Pairs start beside each other toward the east; correct directions below. Unknown dimensions start at 14ft.</p><button onclick={interview}>Build rough plan from answers</button></details></fieldset>{/if}
@@ -33,4 +37,5 @@
  <p>Room labels and extents are correctable. Doors, windows, stairs and irregular walls need further captures or agent refinement; no openings are invented here.</p>{#each warnings as warning}<p class="warning">{warning}</p>{/each}
  {/if}<p role="status">{message}</p>
 </section>
+{/if}
 <style>section{margin:30px 0}h2{font-size:25px}p{line-height:1.6}svg{width:100%;height:440px;border:1px solid #b6cbbd;border-radius:12px;background:white;margin:20px 0}line{pointer-events:none}.wall-hit{cursor:pointer;pointer-events:all}text{pointer-events:none;fill:#263f32}label{display:block;margin:15px 0}input,select,textarea{display:block;padding:12px;margin-top:8px;border:1px solid #becfc5;border-radius:8px;max-width:100%;width:480px;background:white;color:#203c32}fieldset{border:0;padding:0}.edit{display:flex;flex-wrap:wrap;gap:15px}.edit input{width:210px}textarea{min-height:80px}.starters{display:flex;gap:12px;flex-wrap:wrap}button{background:white;padding:10px 16px;border:1px solid #cadbd1;border-radius:8px;color:#254a3c;cursor:pointer;margin:8px 8px 8px 0}details{margin:20px 0}summary{cursor:pointer}.warning{color:#8d431d;background:#fff1db;padding:12px}</style>

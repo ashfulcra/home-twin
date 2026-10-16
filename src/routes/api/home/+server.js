@@ -1,3 +1,5 @@
+import {env} from '$env/dynamic/public';
+import {layoutDraftsEnabled} from '$lib/home/deployment.js';
 import { resolveHome } from '$lib/server/home-access.js';
 import { readHomeContributions } from '$lib/server/home-contributions.js';
 import { error, json } from '@sveltejs/kit';
@@ -23,6 +25,7 @@ export async function GET({ cookies }) {
     const result = reconcileContributions(home, rows);
     const followups = buildHouseholdFollowups(result.home, {
       homeId: home.id,
+      layoutDraftsEnabled: layoutDraftsEnabled(env),
       ownerUserId: access.ownerUserId,
       role: access.role,
       fileVersion: file.id,

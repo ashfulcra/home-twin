@@ -7,3 +7,10 @@ test('mismatched scope, unverified role or missing version rejects stale/unscope
 
 import {resolveSourcePrefill} from './household-followups.js';
 test('source shortcut never carries a different home label across reused equipment IDs or changed revision',()=>{const request={homeId:'example',revision:2,entityId:'heat',title:'Heating service record'};expect(resolveSourcePrefill(home,request)).toEqual(request);expect(resolveSourcePrefill({...home,id:'another'},request)).toBeNull();expect(resolveSourcePrefill({...home,revision:3},request)).toBeNull();expect(resolveSourcePrefill(home,{...request,entityId:'missing'})).toBeNull();});
+
+test('disabled layout drafts remove only generic layout capture prompts',()=>{
+ const result=buildHouseholdFollowups(home,{...context,layoutDraftsEnabled:false});
+ expect(result.questions.some(q=>q.kind==='layout')).toBe(false);
+ expect(result.questions.some(q=>q.kind==='service-history')).toBe(true);
+ expect(result.totalQuestions).toBe(result.questions.length);
+});

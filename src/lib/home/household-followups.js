@@ -4,8 +4,9 @@ import {buildAgentBrief} from './agent-brief.js';
 export function buildHouseholdFollowups(home,context){
  if(home.id!==context.homeId||home.ownerUserId!==context.ownerUserId||!Number.isSafeInteger(home.revision)||!['maintainer','contributor','viewer'].includes(context.role)||typeof context.fileVersion!=='string'||!context.fileVersion)throw Error('Current scoped home, role and version required');
  const brief=buildAgentBrief(home,{role:context.role});
- const questions=brief.questions.slice(0,100).map(q=>({id:`${q.kind}:${q.entityId??'home'}`,kind:q.kind,entityId:typeof q.entityId==='string'?q.entityId:null,prompt:String(q.prompt).slice(0,800),capture:String(q.capture).slice(0,100),destination:q.kind==='layout'?'Layout':q.kind==='systems'?'Household':'Sources'}));
- return {schema:'home-twin-household-followups/1',homeId:home.id,revision:home.revision,fileVersion:context.fileVersion,questions,totalQuestions:brief.questions.length,reviewCount:Math.max(0,Number(context.reviewCount)||0),unavailableCount:Math.max(0,Number(context.unavailableCount)||0)};
+ const scopedQuestions=brief.questions.filter(q=>context.layoutDraftsEnabled!==false||q.kind!=='layout');
+ const questions=scopedQuestions.slice(0,100).map(q=>({id:`${q.kind}:${q.entityId??'home'}`,kind:q.kind,entityId:typeof q.entityId==='string'?q.entityId:null,prompt:String(q.prompt).slice(0,800),capture:String(q.capture).slice(0,100),destination:q.kind==='layout'?'Layout':q.kind==='systems'?'Household':'Sources'}));
+ return {schema:'home-twin-household-followups/1',homeId:home.id,revision:home.revision,fileVersion:context.fileVersion,questions,totalQuestions:scopedQuestions.length,reviewCount:Math.max(0,Number(context.reviewCount)||0),unavailableCount:Math.max(0,Number(context.unavailableCount)||0)};
 }
 
 /** @param {any} home @param {any} request */
